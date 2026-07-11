@@ -1,0 +1,132 @@
+import Foundation
+
+struct FamilyRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let name: String
+    let weeklyBaseAllowanceCents: Int
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case weeklyBaseAllowanceCents = "weekly_base_allowance_cents"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let familyId: UUID
+    let childId: UUID
+    let title: String
+    let shortTitle: String
+    let description: String?
+    let instructions: String?
+    let expectedEvidence: String?
+    let deductionCents: Int
+    let verificationMode: String
+    let recurrence: RecurrencePayload
+    let dueWindowMinutes: Int
+    let reminderOffsetsMinutes: [Int]
+    let isPaused: Bool
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case childId = "child_id"
+        case title
+        case shortTitle = "short_title"
+        case description
+        case instructions
+        case expectedEvidence = "expected_evidence"
+        case deductionCents = "deduction_cents"
+        case verificationMode = "verification_mode"
+        case recurrence
+        case dueWindowMinutes = "due_window_minutes"
+        case reminderOffsetsMinutes = "reminder_offsets_minutes"
+        case isPaused = "is_paused"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct TaskOccurrenceRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let choreDefinitionId: UUID
+    let childId: UUID
+    let weekId: UUID
+    let scheduledAt: Date
+    let dueAt: Date
+    let expiresAt: Date
+    let status: String
+    let submissionId: UUID?
+    let deductionLedgerEntryId: UUID?
+    let excuseReason: String?
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case choreDefinitionId = "chore_definition_id"
+        case childId = "child_id"
+        case weekId = "week_id"
+        case scheduledAt = "scheduled_at"
+        case dueAt = "due_at"
+        case expiresAt = "expires_at"
+        case status
+        case submissionId = "submission_id"
+        case deductionLedgerEntryId = "deduction_ledger_entry_id"
+        case excuseReason = "excuse_reason"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct LedgerEntryRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let weekId: UUID
+    let childId: UUID
+    let createdBy: UUID?
+    let entryType: String
+    let title: String
+    let amountCents: Int
+    let relatedOccurrenceId: UUID?
+    let note: String?
+    let isVoided: Bool
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case weekId = "week_id"
+        case childId = "child_id"
+        case createdBy = "created_by"
+        case entryType = "entry_type"
+        case title
+        case amountCents = "amount_cents"
+        case relatedOccurrenceId = "related_occurrence_id"
+        case note
+        case isVoided = "is_voided"
+        case createdAt = "created_at"
+    }
+}
+
+struct RecurrencePayload: Codable, Sendable {
+    let type: String
+    let times: [String]?
+    let weekdays: [Int]?
+    let rule: String?
+    let dueAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case times
+        case weekdays
+        case rule
+        case dueAt = "due_at"
+    }
+}
+
