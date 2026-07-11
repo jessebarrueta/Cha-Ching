@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EarningsView: View {
     @EnvironmentObject private var store: AppStore
+    var allowsBonusActions: Bool = false
     @State private var showingBonusSheet = false
 
     var body: some View {
@@ -11,17 +12,19 @@ struct EarningsView: View {
 
                 summaryRows
 
-                Button {
-                    showingBonusSheet = true
-                } label: {
-                    Label("Add Bonus", systemImage: "plus.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .foregroundStyle(Color.inkBlack)
-                        .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                if allowsBonusActions {
+                    Button {
+                        showingBonusSheet = true
+                    } label: {
+                        Label("Add Bonus", systemImage: "plus.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 dailyBreakdown
 

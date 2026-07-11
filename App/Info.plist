@@ -24,6 +24,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>InviteBaseURL</key>
+	<string>$(APP_INVITE_BASE_URL)</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
@@ -35,4 +37,3 @@
 	</array>
 </dict>
 </plist>
-

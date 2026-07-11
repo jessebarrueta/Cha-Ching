@@ -5,7 +5,8 @@ public enum SeedData {
     public static let parentId = UUID(uuidString: "E3C87538-7C70-4D20-86F3-F0E01E8AEE43")!
     public static let childId = UUID(uuidString: "A14615DD-424E-44FB-B2E6-C61DA3CE680C")!
     public static let weekId = UUID(uuidString: "AE85BD8B-335A-4444-A523-64B61EC5117E")!
-    public static let childName = "Alex"
+    public static let familyName = "Barrueta Family"
+    public static let childName = "Zoe"
     public static let parentName = "Jesse"
     public static let weeklyAllowanceCents = 1_500
 
@@ -69,9 +70,13 @@ public enum SeedData {
             parentId: parentId,
             childId: childId,
             weekId: weekId,
+            familyName: familyName,
             childName: childName,
             parentName: parentName,
             weeklyAllowanceCents: weeklyAllowanceCents,
+            members: members(now: now),
+            childProfiles: childProfiles(now: now),
+            childInvites: [],
             chores: chores,
             occurrences: occurrences,
             submissions: submissions,
@@ -91,6 +96,39 @@ public enum SeedData {
             )
         )
         return snapshot
+    }
+
+    private static func members(now: Date) -> [FamilyMember] {
+        [
+            FamilyMember(
+                familyId: familyId,
+                userId: parentId,
+                role: .parent,
+                displayName: parentName,
+                createdAt: now.addingTimeInterval(-7 * 24 * 60 * 60)
+            ),
+            FamilyMember(
+                familyId: familyId,
+                userId: childId,
+                role: .child,
+                displayName: childName,
+                createdAt: now.addingTimeInterval(-7 * 24 * 60 * 60)
+            )
+        ]
+    }
+
+    private static func childProfiles(now: Date) -> [ChildProfile] {
+        [
+            ChildProfile(
+                id: childId,
+                familyId: familyId,
+                displayName: childName,
+                linkedUserId: childId,
+                createdByParentId: parentId,
+                createdAt: now.addingTimeInterval(-7 * 24 * 60 * 60),
+                updatedAt: now.addingTimeInterval(-7 * 24 * 60 * 60)
+            )
+        ]
     }
 
     private static func choreDefinitions(now: Date) -> [ChoreDefinition] {

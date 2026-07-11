@@ -50,6 +50,12 @@ struct DashboardView: View {
         .navigationTitle(AppBrand.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            #if DEBUG
+            ToolbarItem(placement: .topBarLeading) {
+                DevelopmentSessionMenu()
+            }
+            #endif
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                 } label: {

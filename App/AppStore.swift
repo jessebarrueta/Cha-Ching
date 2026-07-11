@@ -3,6 +3,10 @@ import SwiftUI
 
 @MainActor
 final class AppStore: ObservableObject {
+    @Published var session: AppSession
+    @Published var members: [FamilyMember]
+    @Published var childProfiles: [ChildProfile]
+    @Published var childInvites: [ChildInvite]
     @Published var chores: [ChoreDefinition]
     @Published var occurrences: [TaskOccurrence]
     @Published var submissions: [ChoreSubmission]
@@ -12,6 +16,7 @@ final class AppStore: ObservableObject {
     let parentId: UUID
     let childId: UUID
     let weekId: UUID
+    let familyName: String
     let childName: String
     let parentName: String
 
@@ -20,12 +25,37 @@ final class AppStore: ObservableObject {
         self.parentId = snapshot.parentId
         self.childId = snapshot.childId
         self.weekId = snapshot.weekId
+        self.familyName = snapshot.familyName
         self.childName = snapshot.childName
         self.parentName = snapshot.parentName
+        self.session = AppSession(userId: snapshot.parentId, role: .parent, displayName: snapshot.parentName)
+        self.members = snapshot.members
+        self.childProfiles = snapshot.childProfiles
+        self.childInvites = snapshot.childInvites
         self.chores = snapshot.chores
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
         self.ledger = snapshot.ledger
+    }
+
+    var activeRole: FamilyMemberRole {
+        session.role
+    }
+
+    var isParentSession: Bool {
+        activeRole == .parent
+    }
+
+    var isChildSession: Bool {
+        activeRole == .child
+    }
+
+    var activeChildProfile: ChildProfile? {
+        childProfiles.first { $0.id == childId }
+    }
+
+    var latestInvite: ChildInvite? {
+        childInvites.sorted { $0.createdAt > $1.createdAt }.first
     }
 
     var allowanceSummary: AllowanceSummary {
@@ -66,6 +96,72 @@ final class AppStore: ObservableObject {
 
     func submission(for occurrence: TaskOccurrence) -> ChoreSubmission? {
         submissions.first { $0.taskOccurrenceId == occurrence.id }
+    }
+
+    func switchSession(to role: FamilyMemberRole) {
+        switch role {
+        case .parent:
+            session = AppSession(userId: parentId, role: .parent, displayName: parentName)
+        case .child:
+            session = AppSession(userId: childId, role: .child, displayName: childName)
+        }
+    }
+
+    func createChildInvite(childName: String, phoneNumber: String?) {
+        let trimmedName = childName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            return
+        }
+
+        let normalizedPhone = phoneNumber?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let usablePhone = normalizedPhone?.isEmpty == false ? normalizedPhone : nil
+        let childProfileId = upsertChildProfile(named: trimmedName, phoneNumber: usablePhone)
+        let token = makeInviteToken(for: trimmedName)
+        let now = Date()
+        let invite = ChildInvite(
+            familyId: familyId,
+            childProfileId: childProfileId,
+            childName: trimmedName,
+            phoneNumber: usablePhone,
+            createdByParentId: parentId,
+            token: token,
+            inviteURL: AppBrand.inviteURL(token: token),
+            createdAt: now,
+            expiresAt: Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 24 * 60 * 60)
+        )
+
+        childInvites.insert(invite, at: 0)
+    }
+
+    func revokeInvite(_ invite: ChildInvite) {
+        updateInvite(invite.id) { invite in
+            invite.status = .revoked
+        }
+    }
+
+    func markInviteAccepted(_ invite: ChildInvite) {
+        let now = Date()
+        updateInvite(invite.id) { invite in
+            invite.status = .accepted
+            invite.acceptedAt = now
+            invite.acceptedChildUserId = childId
+        }
+
+        if !members.contains(where: { $0.userId == childId && $0.role == .child }) {
+            members.append(
+                FamilyMember(
+                    familyId: familyId,
+                    userId: childId,
+                    role: .child,
+                    displayName: invite.childName
+                )
+            )
+        }
+
+        updateChildProfile(invite.childProfileId) { profile in
+            profile.linkedUserId = childId
+            profile.updatedAt = now
+        }
     }
 
     func submitEvidence(for occurrenceId: UUID) {
@@ -171,6 +267,45 @@ final class AppStore: ObservableObject {
         mutation(&occurrences[index])
     }
 
+    private func updateInvite(_ id: UUID, mutation: (inout ChildInvite) -> Void) {
+        guard let index = childInvites.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        mutation(&childInvites[index])
+    }
+
+    private func updateChildProfile(_ id: UUID, mutation: (inout ChildProfile) -> Void) {
+        guard let index = childProfiles.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        mutation(&childProfiles[index])
+    }
+
+    private func upsertChildProfile(named childName: String, phoneNumber: String?) -> UUID {
+        if let index = childProfiles.firstIndex(where: { $0.displayName.caseInsensitiveCompare(childName) == .orderedSame }) {
+            childProfiles[index].phoneNumber = phoneNumber
+            childProfiles[index].updatedAt = Date()
+            return childProfiles[index].id
+        }
+
+        let profile = ChildProfile(
+            familyId: familyId,
+            displayName: childName,
+            phoneNumber: phoneNumber,
+            createdByParentId: parentId
+        )
+        childProfiles.append(profile)
+        return profile.id
+    }
+
+    private func makeInviteToken(for childName: String) -> String {
+        let namePrefix = childName
+            .lowercased()
+            .filter { $0.isLetter || $0.isNumber }
+            .prefix(12)
+        return "\(namePrefix)-\(UUID().uuidString.prefix(8).lowercased())"
+    }
+
     private func decideSubmission(for occurrence: TaskOccurrence, decision: ParentDecision.Decision, note: String? = nil) {
         guard let index = submissions.firstIndex(where: { $0.taskOccurrenceId == occurrence.id }) else {
             return
@@ -234,4 +369,10 @@ final class AppStore: ObservableObject {
             return 5
         }
     }
+}
+
+struct AppSession: Equatable {
+    var userId: UUID
+    var role: FamilyMemberRole
+    var displayName: String
 }

@@ -18,12 +18,14 @@ Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app 
 - Foundation-only core package for deterministic allowance logic
 - Supabase Swift package linked through the Xcode project
 - Supabase client configuration using the publishable project key
-- Initial Supabase SQL migration for families, chores, occurrences, submissions, ledger entries, RLS, and private evidence storage
-- Seed family state for Jesse/Alex with `$15.00` base allowance and `$13.50` current total
+- Initial Supabase SQL migrations for families, child profiles, child invites, chores, occurrences, submissions, ledger entries, RLS, and private evidence storage
+- Seed family state for Jesse/Zoe with `$15.00` base allowance and `$13.50` current total
+- Role-aware parent and child app shells
 - Ledger-driven allowance summary
 - Idempotent missed-task deductions
 - Excuse flow that voids deductions
 - Parent bonus flow
+- Parent child-profile and invite-link flow with iOS share sheet handoff
 - Child dashboard
 - Task detail
 - Mock camera/evidence capture
@@ -53,10 +55,11 @@ App/Networking/SupabaseClientProvider.swift
 
 The checked-in key is the Supabase publishable key, which is expected to be present in client apps. Do not commit the database password, service-role key, or OpenAI keys.
 
-The initial schema lives in:
+The schema lives in:
 
 ```text
 supabase/migrations/0001_initial_schema.sql
+supabase/migrations/0002_child_profiles_and_invites.sql
 ```
 
 Evidence files should be stored under paths beginning with the family id:
@@ -65,20 +68,22 @@ Evidence files should be stored under paths beginning with the family id:
 {familyId}/{taskOccurrenceId}/original.jpg
 ```
 
-This workspace currently does not have `psql` or the Supabase CLI installed. To apply the migration without saving the database password:
+To apply migrations without saving the database password:
 
 ```sh
 export SUPABASE_DB_PASSWORD='...'
 psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
   -f supabase/migrations/0001_initial_schema.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0002_child_profiles_and_invites.sql
 ```
 
 ## Next Slices
 
-1. Apply the Supabase migration.
-2. Add parent/child authentication and role-gated app mode switching.
+1. Add Supabase auth and route from `family_members.role`.
+2. Add the invite-acceptance Edge Function that hashes tokens and links child profiles to child auth users.
 3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
 4. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
 5. Add WidgetKit targets backed by shared App Group state.
-6. Add local notification scheduling and deep links.
+6. Add local notification scheduling and Universal Links.
 7. Move AI review behind a server-side endpoint with structured JSON output.

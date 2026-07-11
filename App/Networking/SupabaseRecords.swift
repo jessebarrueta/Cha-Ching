@@ -16,6 +16,76 @@ struct FamilyRecord: Codable, Identifiable, Sendable {
     }
 }
 
+struct FamilyMemberRecord: Codable, Identifiable, Sendable {
+    let familyId: UUID
+    let userId: UUID
+    let role: String
+    let displayName: String
+    let createdAt: Date
+
+    var id: UUID { userId }
+
+    enum CodingKeys: String, CodingKey {
+        case familyId = "family_id"
+        case userId = "user_id"
+        case role
+        case displayName = "display_name"
+        case createdAt = "created_at"
+    }
+}
+
+struct ChildProfileRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let familyId: UUID
+    let displayName: String
+    let phoneE164: String?
+    let linkedUserId: UUID?
+    let createdByParentId: UUID?
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case displayName = "display_name"
+        case phoneE164 = "phone_e164"
+        case linkedUserId = "linked_user_id"
+        case createdByParentId = "created_by_parent_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+struct ChildInviteRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let familyId: UUID
+    let childProfileId: UUID
+    let childName: String
+    let phoneE164: String?
+    let createdByParentId: UUID?
+    let status: String
+    let expiresAt: Date
+    let acceptedAt: Date?
+    let acceptedChildUserId: UUID?
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case childProfileId = "child_profile_id"
+        case childName = "child_name"
+        case phoneE164 = "phone_e164"
+        case createdByParentId = "created_by_parent_id"
+        case status
+        case expiresAt = "expires_at"
+        case acceptedAt = "accepted_at"
+        case acceptedChildUserId = "accepted_child_user_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
 struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let familyId: UUID
@@ -129,4 +199,3 @@ struct RecurrencePayload: Codable, Sendable {
         case dueAt = "due_at"
     }
 }
-

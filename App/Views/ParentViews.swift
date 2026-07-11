@@ -16,19 +16,29 @@ struct ParentWorkspaceView: View {
 
             if selectedTab == .review {
                 ParentReviewQueueView()
-            } else {
+            } else if selectedTab == .chores {
                 ChoreManagementView()
+            } else {
+                ChildInviteManagementView()
             }
         }
         .background(Color.paperWhite.ignoresSafeArea())
         .navigationTitle("Parent")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            #if DEBUG
+            ToolbarItem(placement: .topBarLeading) {
+                DevelopmentSessionMenu()
+            }
+            #endif
+        }
     }
 }
 
 enum ParentTab: String, CaseIterable, Identifiable {
     case review
     case chores
+    case children
 
     var id: String { rawValue }
     var title: String {
@@ -37,6 +47,8 @@ enum ParentTab: String, CaseIterable, Identifiable {
             return "Review"
         case .chores:
             return "Chores"
+        case .children:
+            return "Children"
         }
     }
 }
@@ -297,6 +309,209 @@ struct ChoreManagementView: View {
     }
 }
 
+struct ChildInviteManagementView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var childName = "Zoe"
+    @State private var phoneNumber = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Children")
+                        .font(.title3.weight(.heavy))
+
+                    ForEach(store.childProfiles) { profile in
+                        ChildProfileCard(profile: profile)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Invite")
+                        .font(.title3.weight(.heavy))
+
+                    VStack(spacing: 12) {
+                        TextField("Child name", text: $childName)
+                            .textContentType(.givenName)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+
+                        TextField("Phone number", text: $phoneNumber)
+                            .textContentType(.telephoneNumber)
+                            .keyboardType(.phonePad)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+
+                        PrimaryButton(title: "Create Invite", systemImage: "link.badge.plus") {
+                            store.createChildInvite(childName: childName, phoneNumber: phoneNumber)
+                        }
+                    }
+                    .padding(16)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.softGray, lineWidth: 1)
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Links")
+                        .font(.title3.weight(.heavy))
+
+                    if store.childInvites.isEmpty {
+                        ContentUnavailableView("No invites yet", systemImage: "message.badge")
+                            .frame(minHeight: 180)
+                    } else {
+                        ForEach(store.childInvites) { invite in
+                            ChildInviteCard(invite: invite)
+                        }
+                    }
+                }
+            }
+            .padding(22)
+        }
+    }
+}
+
+struct ChildProfileCard: View {
+    var profile: ChildProfile
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(profile.linkedUserId == nil ? Color.sunYellow : Color.acidLime)
+                    .frame(width: 48, height: 48)
+                Image(systemName: profile.linkedUserId == nil ? "person.crop.circle.badge.plus" : "checkmark")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color.inkBlack)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(profile.displayName)
+                    .font(.headline)
+                    .foregroundStyle(Color.inkBlack)
+
+                Text(profile.linkedUserId == nil ? "Waiting for account link" : "Connected child account")
+                    .font(.caption)
+                    .foregroundStyle(Color.mutedGray)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.softGray, lineWidth: 1)
+        )
+    }
+}
+
+struct ChildInviteCard: View {
+    @EnvironmentObject private var store: AppStore
+    var invite: ChildInvite
+
+    private var status: ChildInviteStatus {
+        invite.resolvedStatus()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(invite.childName)
+                        .font(.headline)
+                        .foregroundStyle(Color.inkBlack)
+                    if let phoneNumber = invite.phoneNumber {
+                        Text(phoneNumber)
+                            .font(.caption)
+                            .foregroundStyle(Color.mutedGray)
+                    }
+                }
+
+                Spacer()
+
+                Text(status.title)
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .foregroundStyle(Color.inkBlack)
+                    .background(statusColor, in: Capsule())
+            }
+
+            Text(invite.inviteURL.absoluteString)
+                .font(.caption.monospaced())
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.softGray.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            if status == .pending {
+                HStack(spacing: 10) {
+                    ShareLink(
+                        item: invite.inviteURL,
+                        subject: Text("Join \(AppBrand.displayName)"),
+                        message: Text("\(store.parentName) invited you to join \(AppBrand.displayName).")
+                    ) {
+                        Label("Send Message", systemImage: "message.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    Button {
+                        store.revokeInvite(invite)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 48, height: 48)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.softGray, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .accessibilityLabel("Revoke invite")
+                }
+
+                #if DEBUG
+                Button {
+                    store.markInviteAccepted(invite)
+                } label: {
+                    Label("Mark Accepted", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                        .foregroundStyle(Color.inkBlack)
+                        .background(Color.sunYellow.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                #endif
+            }
+        }
+        .padding(16)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(status == .pending ? Color.sunYellow : Color.softGray, lineWidth: 1.5)
+        )
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .pending:
+            return .sunYellow.opacity(0.5)
+        case .accepted:
+            return .acidLime.opacity(0.55)
+        case .expired:
+            return .warmOrange.opacity(0.35)
+        case .revoked:
+            return .softGray
+        }
+    }
+}
+
 struct EditChoreSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
@@ -346,4 +561,3 @@ struct EditChoreSheet: View {
         }
     }
 }
-

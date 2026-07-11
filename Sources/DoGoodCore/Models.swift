@@ -1,5 +1,152 @@
 import Foundation
 
+public enum FamilyMemberRole: String, Codable, CaseIterable, Identifiable {
+    case parent
+    case child
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .parent:
+            return "Parent"
+        case .child:
+            return "Child"
+        }
+    }
+}
+
+public struct FamilyMember: Identifiable, Codable, Equatable {
+    public var familyId: UUID
+    public var userId: UUID
+    public var role: FamilyMemberRole
+    public var displayName: String
+    public var createdAt: Date
+
+    public var id: UUID { userId }
+
+    public init(
+        familyId: UUID,
+        userId: UUID,
+        role: FamilyMemberRole,
+        displayName: String,
+        createdAt: Date = Date()
+    ) {
+        self.familyId = familyId
+        self.userId = userId
+        self.role = role
+        self.displayName = displayName
+        self.createdAt = createdAt
+    }
+}
+
+public struct ChildProfile: Identifiable, Codable, Equatable {
+    public var id: UUID
+    public var familyId: UUID
+    public var displayName: String
+    public var phoneNumber: String?
+    public var linkedUserId: UUID?
+    public var createdByParentId: UUID
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        familyId: UUID,
+        displayName: String,
+        phoneNumber: String? = nil,
+        linkedUserId: UUID? = nil,
+        createdByParentId: UUID,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.familyId = familyId
+        self.displayName = displayName
+        self.phoneNumber = phoneNumber
+        self.linkedUserId = linkedUserId
+        self.createdByParentId = createdByParentId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public enum ChildInviteStatus: String, Codable, CaseIterable, Identifiable {
+    case pending
+    case accepted
+    case expired
+    case revoked
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .pending:
+            return "Pending"
+        case .accepted:
+            return "Accepted"
+        case .expired:
+            return "Expired"
+        case .revoked:
+            return "Revoked"
+        }
+    }
+}
+
+public struct ChildInvite: Identifiable, Codable, Equatable {
+    public var id: UUID
+    public var familyId: UUID
+    public var childProfileId: UUID
+    public var childName: String
+    public var phoneNumber: String?
+    public var createdByParentId: UUID
+    public var token: String
+    public var inviteURL: URL
+    public var status: ChildInviteStatus
+    public var createdAt: Date
+    public var expiresAt: Date
+    public var acceptedAt: Date?
+    public var acceptedChildUserId: UUID?
+
+    public init(
+        id: UUID = UUID(),
+        familyId: UUID,
+        childProfileId: UUID,
+        childName: String,
+        phoneNumber: String? = nil,
+        createdByParentId: UUID,
+        token: String,
+        inviteURL: URL,
+        status: ChildInviteStatus = .pending,
+        createdAt: Date = Date(),
+        expiresAt: Date,
+        acceptedAt: Date? = nil,
+        acceptedChildUserId: UUID? = nil
+    ) {
+        self.id = id
+        self.familyId = familyId
+        self.childProfileId = childProfileId
+        self.childName = childName
+        self.phoneNumber = phoneNumber
+        self.createdByParentId = createdByParentId
+        self.token = token
+        self.inviteURL = inviteURL
+        self.status = status
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+        self.acceptedAt = acceptedAt
+        self.acceptedChildUserId = acceptedChildUserId
+    }
+
+    public func resolvedStatus(now: Date = Date()) -> ChildInviteStatus {
+        if status == .pending, expiresAt <= now {
+            return .expired
+        }
+
+        return status
+    }
+}
+
 public enum LedgerEntryType: String, Codable, CaseIterable, Identifiable {
     case weeklyBase = "weekly_base"
     case deduction
@@ -266,12 +413,15 @@ public struct SeedSnapshot {
     public var parentId: UUID
     public var childId: UUID
     public var weekId: UUID
+    public var familyName: String
     public var childName: String
     public var parentName: String
     public var weeklyAllowanceCents: Int
+    public var members: [FamilyMember]
+    public var childProfiles: [ChildProfile]
+    public var childInvites: [ChildInvite]
     public var chores: [ChoreDefinition]
     public var occurrences: [TaskOccurrence]
     public var submissions: [ChoreSubmission]
     public var ledger: [LedgerEntry]
 }
-

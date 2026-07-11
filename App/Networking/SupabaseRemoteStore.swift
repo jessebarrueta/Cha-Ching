@@ -12,6 +12,35 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func fetchFamilyMembers(familyId: UUID) async throws -> [FamilyMemberRecord] {
+        try await client
+            .from("family_members")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .execute()
+            .value
+    }
+
+    func fetchChildProfiles(familyId: UUID) async throws -> [ChildProfileRecord] {
+        try await client
+            .from("child_profiles")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .order("created_at")
+            .execute()
+            .value
+    }
+
+    func fetchChildInvites(familyId: UUID) async throws -> [ChildInviteRecord] {
+        try await client
+            .from("child_invites")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
     func fetchChores(familyId: UUID) async throws -> [ChoreDefinitionRecord] {
         try await client
             .from("chore_definitions")
@@ -32,4 +61,3 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 }
-
