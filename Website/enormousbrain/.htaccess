@@ -1,6 +1,6 @@
 RewriteEngine On
 
-RewriteRule ^cha-ching/invite/[^/]+/?$ /cha-ching/invite/index.html [L]
+RewriteRule ^cha-ching/invite/[A-Za-z0-9_-]+/?$ /cha-ching/invite/index.html [L]
 
 <Files "apple-app-site-association">
   ForceType application/json
