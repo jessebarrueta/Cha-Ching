@@ -147,6 +147,79 @@ public struct ChildInvite: Identifiable, Codable, Equatable {
     }
 }
 
+public enum ParentInviteStatus: String, Codable, CaseIterable, Identifiable {
+    case pending
+    case accepted
+    case expired
+    case revoked
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .pending:
+            return "Pending"
+        case .accepted:
+            return "Accepted"
+        case .expired:
+            return "Expired"
+        case .revoked:
+            return "Revoked"
+        }
+    }
+}
+
+public struct ParentInvite: Identifiable, Codable, Equatable {
+    public var id: UUID
+    public var familyId: UUID
+    public var parentName: String
+    public var phoneNumber: String?
+    public var createdByParentId: UUID
+    public var token: String
+    public var inviteURL: URL
+    public var status: ParentInviteStatus
+    public var createdAt: Date
+    public var expiresAt: Date
+    public var acceptedAt: Date?
+    public var acceptedParentUserId: UUID?
+
+    public init(
+        id: UUID = UUID(),
+        familyId: UUID,
+        parentName: String,
+        phoneNumber: String? = nil,
+        createdByParentId: UUID,
+        token: String,
+        inviteURL: URL,
+        status: ParentInviteStatus = .pending,
+        createdAt: Date = Date(),
+        expiresAt: Date,
+        acceptedAt: Date? = nil,
+        acceptedParentUserId: UUID? = nil
+    ) {
+        self.id = id
+        self.familyId = familyId
+        self.parentName = parentName
+        self.phoneNumber = phoneNumber
+        self.createdByParentId = createdByParentId
+        self.token = token
+        self.inviteURL = inviteURL
+        self.status = status
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+        self.acceptedAt = acceptedAt
+        self.acceptedParentUserId = acceptedParentUserId
+    }
+
+    public func resolvedStatus(now: Date = Date()) -> ParentInviteStatus {
+        if status == .pending, expiresAt <= now {
+            return .expired
+        }
+
+        return status
+    }
+}
+
 public enum LedgerEntryType: String, Codable, CaseIterable, Identifiable {
     case weeklyBase = "weekly_base"
     case deduction
@@ -420,6 +493,7 @@ public struct SeedSnapshot {
     public var members: [FamilyMember]
     public var childProfiles: [ChildProfile]
     public var childInvites: [ChildInvite]
+    public var parentInvites: [ParentInvite]
     public var chores: [ChoreDefinition]
     public var occurrences: [TaskOccurrence]
     public var submissions: [ChoreSubmission]

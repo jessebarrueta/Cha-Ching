@@ -5,6 +5,7 @@ protocol InviteAcceptanceServicing: Sendable {
     func requestSMSCode(phoneNumber: String) async throws
     func verifySMSCode(phoneNumber: String, code: String) async throws -> UUID
     func acceptChildInvite(token: String) async throws -> AcceptedChildInvite
+    func acceptParentInvite(token: String) async throws -> AcceptedParentInvite
 }
 
 struct SupabaseInviteAcceptanceService: InviteAcceptanceServicing {
@@ -36,13 +37,23 @@ struct SupabaseInviteAcceptanceService: InviteAcceptanceServicing {
             "accept-child-invite",
             options: FunctionInvokeOptions(
                 method: .post,
-                body: AcceptChildInviteRequest(token: token)
+                body: AcceptInviteRequest(token: token)
+            )
+        )
+    }
+
+    func acceptParentInvite(token: String) async throws -> AcceptedParentInvite {
+        try await client.functions.invoke(
+            "accept-parent-invite",
+            options: FunctionInvokeOptions(
+                method: .post,
+                body: AcceptInviteRequest(token: token)
             )
         )
     }
 }
 
-struct AcceptChildInviteRequest: Encodable, Sendable {
+struct AcceptInviteRequest: Encodable, Sendable {
     var token: String
 }
 
@@ -57,6 +68,18 @@ struct AcceptedChildInvite: Decodable, Equatable, Sendable {
         case childProfileId = "child_profile_id"
         case childName = "child_name"
         case acceptedChildUserId = "accepted_child_user_id"
+    }
+}
+
+struct AcceptedParentInvite: Decodable, Equatable, Sendable {
+    var familyId: UUID
+    var parentName: String
+    var acceptedParentUserId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case familyId = "family_id"
+        case parentName = "parent_name"
+        case acceptedParentUserId = "accepted_parent_user_id"
     }
 }
 

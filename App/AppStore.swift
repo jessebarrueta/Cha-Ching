@@ -7,6 +7,7 @@ final class AppStore: ObservableObject {
     @Published var members: [FamilyMember]
     @Published var childProfiles: [ChildProfile]
     @Published var childInvites: [ChildInvite]
+    @Published var parentInvites: [ParentInvite]
     @Published var pendingInvite: PendingInvite?
     @Published var inviteAcceptanceState: InviteAcceptanceState
     @Published var chores: [ChoreDefinition]
@@ -40,6 +41,7 @@ final class AppStore: ObservableObject {
         self.members = snapshot.members
         self.childProfiles = snapshot.childProfiles
         self.childInvites = snapshot.childInvites
+        self.parentInvites = snapshot.parentInvites
         self.pendingInvite = nil
         self.inviteAcceptanceState = .idle
         self.chores = snapshot.chores
@@ -171,9 +173,17 @@ final class AppStore: ObservableObject {
                 phoneNumber: normalizedPhoneNumber,
                 code: trimmedCode
             )
-            let acceptedInvite = try await inviteAcceptanceService.acceptChildInvite(token: pendingInvite.token)
-            applyAcceptedInvite(acceptedInvite, token: pendingInvite.token)
-            inviteAcceptanceState = .accepted(childName: acceptedInvite.childName)
+
+            switch pendingInvite.kind {
+            case .parent:
+                let acceptedInvite = try await inviteAcceptanceService.acceptParentInvite(token: pendingInvite.token)
+                applyAcceptedParentInvite(acceptedInvite, token: pendingInvite.token)
+                inviteAcceptanceState = .accepted(displayName: acceptedInvite.parentName, role: .parent)
+            case .child:
+                let acceptedInvite = try await inviteAcceptanceService.acceptChildInvite(token: pendingInvite.token)
+                applyAcceptedChildInvite(acceptedInvite, token: pendingInvite.token)
+                inviteAcceptanceState = .accepted(displayName: acceptedInvite.childName, role: .child)
+            }
         } catch {
             inviteAcceptanceState = .failed(error.localizedDescription)
         }
@@ -188,7 +198,7 @@ final class AppStore: ObservableObject {
         let normalizedPhone = phoneNumber?.trimmingCharacters(in: .whitespacesAndNewlines)
         let usablePhone = normalizedPhone?.isEmpty == false ? normalizedPhone : nil
         let childProfileId = upsertChildProfile(named: trimmedName, phoneNumber: usablePhone)
-        let token = makeInviteToken(for: trimmedName)
+        let token = makeInviteToken(for: trimmedName, prefix: "child")
         let now = Date()
         let invite = ChildInvite(
             familyId: familyId,
@@ -205,8 +215,38 @@ final class AppStore: ObservableObject {
         childInvites.insert(invite, at: 0)
     }
 
+    func createParentInvite(parentName: String, phoneNumber: String?) {
+        let trimmedName = parentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            return
+        }
+
+        let normalizedPhone = phoneNumber?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let usablePhone = normalizedPhone?.isEmpty == false ? normalizedPhone : nil
+        let token = makeInviteToken(for: trimmedName, prefix: "parent")
+        let now = Date()
+        let invite = ParentInvite(
+            familyId: familyId,
+            parentName: trimmedName,
+            phoneNumber: usablePhone,
+            createdByParentId: session.userId,
+            token: token,
+            inviteURL: AppBrand.inviteURL(token: token),
+            createdAt: now,
+            expiresAt: Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 24 * 60 * 60)
+        )
+
+        parentInvites.insert(invite, at: 0)
+    }
+
     func revokeInvite(_ invite: ChildInvite) {
         updateInvite(invite.id) { invite in
+            invite.status = .revoked
+        }
+    }
+
+    func revokeParentInvite(_ invite: ParentInvite) {
+        updateParentInvite(invite.id) { invite in
             invite.status = .revoked
         }
     }
@@ -233,6 +273,27 @@ final class AppStore: ObservableObject {
         updateChildProfile(invite.childProfileId) { profile in
             profile.linkedUserId = childId
             profile.updatedAt = now
+        }
+    }
+
+    func markParentInviteAccepted(_ invite: ParentInvite) {
+        let now = Date()
+        let acceptedParentId = UUID()
+        updateParentInvite(invite.id) { invite in
+            invite.status = .accepted
+            invite.acceptedAt = now
+            invite.acceptedParentUserId = acceptedParentId
+        }
+
+        if !members.contains(where: { $0.userId == acceptedParentId && $0.role == .parent }) {
+            members.append(
+                FamilyMember(
+                    familyId: familyId,
+                    userId: acceptedParentId,
+                    role: .parent,
+                    displayName: invite.parentName
+                )
+            )
         }
     }
 
@@ -346,6 +407,13 @@ final class AppStore: ObservableObject {
         mutation(&childInvites[index])
     }
 
+    private func updateParentInvite(_ id: UUID, mutation: (inout ParentInvite) -> Void) {
+        guard let index = parentInvites.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        mutation(&parentInvites[index])
+    }
+
     private func updateChildProfile(_ id: UUID, mutation: (inout ChildProfile) -> Void) {
         guard let index = childProfiles.firstIndex(where: { $0.id == id }) else {
             return
@@ -353,7 +421,7 @@ final class AppStore: ObservableObject {
         mutation(&childProfiles[index])
     }
 
-    private func applyAcceptedInvite(_ acceptedInvite: AcceptedChildInvite, token: String) {
+    private func applyAcceptedChildInvite(_ acceptedInvite: AcceptedChildInvite, token: String) {
         let now = Date()
 
         if let index = childInvites.firstIndex(where: { $0.token == token }) {
@@ -396,6 +464,33 @@ final class AppStore: ObservableObject {
         )
     }
 
+    private func applyAcceptedParentInvite(_ acceptedInvite: AcceptedParentInvite, token: String) {
+        let now = Date()
+
+        if let index = parentInvites.firstIndex(where: { $0.token == token }) {
+            parentInvites[index].status = .accepted
+            parentInvites[index].acceptedAt = now
+            parentInvites[index].acceptedParentUserId = acceptedInvite.acceptedParentUserId
+        }
+
+        if !members.contains(where: { $0.userId == acceptedInvite.acceptedParentUserId && $0.role == .parent }) {
+            members.append(
+                FamilyMember(
+                    familyId: acceptedInvite.familyId,
+                    userId: acceptedInvite.acceptedParentUserId,
+                    role: .parent,
+                    displayName: acceptedInvite.parentName
+                )
+            )
+        }
+
+        session = AppSession(
+            userId: acceptedInvite.acceptedParentUserId,
+            role: .parent,
+            displayName: acceptedInvite.parentName
+        )
+    }
+
     private func upsertChildProfile(named childName: String, phoneNumber: String?) -> UUID {
         if let index = childProfiles.firstIndex(where: { $0.displayName.caseInsensitiveCompare(childName) == .orderedSame }) {
             childProfiles[index].phoneNumber = phoneNumber
@@ -413,12 +508,12 @@ final class AppStore: ObservableObject {
         return profile.id
     }
 
-    private func makeInviteToken(for childName: String) -> String {
-        let namePrefix = childName
+    private func makeInviteToken(for inviteeName: String, prefix: String) -> String {
+        let namePrefix = inviteeName
             .lowercased()
             .filter { $0.isLetter || $0.isNumber }
             .prefix(12)
-        return "\(namePrefix)-\(UUID().uuidString.prefix(8).lowercased())"
+        return "\(prefix)-\(namePrefix)-\(UUID().uuidString.prefix(8).lowercased())"
     }
 
     private func inviteToken(from url: URL) -> String? {
@@ -534,6 +629,15 @@ struct PendingInvite: Identifiable, Equatable {
     var url: URL
 
     var id: String { token }
+
+    var kind: PendingInviteKind {
+        token.hasPrefix("parent-") ? .parent : .child
+    }
+}
+
+enum PendingInviteKind: Equatable {
+    case child
+    case parent
 }
 
 enum InviteAcceptanceState: Equatable {
@@ -541,7 +645,7 @@ enum InviteAcceptanceState: Equatable {
     case requestingCode
     case codeSent(phoneNumber: String)
     case accepting
-    case accepted(childName: String)
+    case accepted(displayName: String, role: FamilyMemberRole)
     case failed(String)
 
     var isWorking: Bool {
@@ -560,9 +664,16 @@ enum InviteAcceptanceState: Equatable {
         return nil
     }
 
-    var acceptedChildName: String? {
-        if case .accepted(let childName) = self {
-            return childName
+    var acceptedDisplayName: String? {
+        if case .accepted(let displayName, _) = self {
+            return displayName
+        }
+        return nil
+    }
+
+    var acceptedRole: FamilyMemberRole? {
+        if case .accepted(_, let role) = self {
+            return role
         }
         return nil
     }

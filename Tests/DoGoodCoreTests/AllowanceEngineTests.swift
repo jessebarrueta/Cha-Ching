@@ -15,7 +15,7 @@ final class AllowanceEngineTests: XCTestCase {
     func testSeedStateIncludesParentAndChildRoles() {
         let snapshot = SeedData.snapshot()
 
-        XCTAssertTrue(snapshot.members.contains { $0.role == .parent && $0.displayName == "Jesse" })
+        XCTAssertTrue(snapshot.members.contains { $0.role == .parent && $0.displayName == "Daddy" })
         XCTAssertTrue(snapshot.members.contains { $0.role == .child && $0.displayName == "Zoe" })
         XCTAssertEqual(snapshot.childProfiles.first?.displayName, "Zoe")
     }

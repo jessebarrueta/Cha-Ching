@@ -124,7 +124,7 @@ struct InviteLandingSheet: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("You're invited")
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    Text("Sign in with this phone to join \(store.familyName).")
+                    Text("Sign in with this phone to join \(store.familyName) as \(invite.kind.roleTitle.lowercased()).")
                         .font(.body)
                         .foregroundStyle(Color.mutedGray)
                 }
@@ -150,8 +150,8 @@ struct InviteLandingSheet: View {
                             .foregroundStyle(Color.warmOrange)
                     }
 
-                    if let childName = store.inviteAcceptanceState.acceptedChildName {
-                        Label("\(childName) is connected", systemImage: "checkmark.circle.fill")
+                    if let displayName = store.inviteAcceptanceState.acceptedDisplayName {
+                        Label("\(displayName) is connected as \(store.inviteAcceptanceState.acceptedRole?.title ?? invite.kind.roleTitle)", systemImage: "checkmark.circle.fill")
                             .font(.headline)
                             .foregroundStyle(Color.green)
                     }
@@ -236,7 +236,7 @@ struct InviteLandingSheet: View {
     }
 
     private func performPrimaryAction() {
-        if store.inviteAcceptanceState.acceptedChildName != nil {
+        if store.inviteAcceptanceState.acceptedDisplayName != nil {
             store.clearPendingInvite()
             dismiss()
             return
@@ -253,6 +253,17 @@ struct InviteLandingSheet: View {
                     hasRequestedCode = true
                 }
             }
+        }
+    }
+}
+
+private extension PendingInviteKind {
+    var roleTitle: String {
+        switch self {
+        case .child:
+            return "Child"
+        case .parent:
+            return "Parent"
         }
     }
 }

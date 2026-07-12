@@ -86,6 +86,34 @@ struct ChildInviteRecord: Codable, Identifiable, Sendable {
     }
 }
 
+struct ParentInviteRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let familyId: UUID
+    let parentName: String
+    let phoneE164: String?
+    let createdByParentId: UUID?
+    let status: String
+    let expiresAt: Date
+    let acceptedAt: Date?
+    let acceptedParentUserId: UUID?
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case parentName = "parent_name"
+        case phoneE164 = "phone_e164"
+        case createdByParentId = "created_by_parent_id"
+        case status
+        case expiresAt = "expires_at"
+        case acceptedAt = "accepted_at"
+        case acceptedParentUserId = "accepted_parent_user_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
 struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let familyId: UUID

@@ -41,6 +41,16 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func fetchParentInvites(familyId: UUID) async throws -> [ParentInviteRecord] {
+        try await client
+            .from("parent_invites")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
     func fetchChores(familyId: UUID) async throws -> [ChoreDefinitionRecord] {
         try await client
             .from("chore_definitions")

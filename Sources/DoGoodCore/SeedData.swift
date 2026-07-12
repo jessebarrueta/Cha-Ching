@@ -7,7 +7,7 @@ public enum SeedData {
     public static let weekId = UUID(uuidString: "AE85BD8B-335A-4444-A523-64B61EC5117E")!
     public static let familyName = "Barrueta Family"
     public static let childName = "Zoe"
-    public static let parentName = "Jesse"
+    public static let parentName = "Daddy"
     public static let weeklyAllowanceCents = 1_500
 
     public static func snapshot(now: Date = Date()) -> SeedSnapshot {
@@ -77,6 +77,7 @@ public enum SeedData {
             members: members(now: now),
             childProfiles: childProfiles(now: now),
             childInvites: [],
+            parentInvites: [],
             chores: chores,
             occurrences: occurrences,
             submissions: submissions,

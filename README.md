@@ -19,7 +19,7 @@ Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app 
 - Supabase Swift package linked through the Xcode project
 - Supabase client configuration using the publishable project key
 - Initial Supabase SQL migrations for families, child profiles, child invites, chores, occurrences, submissions, ledger entries, RLS, and private evidence storage
-- Seed family state for Jesse/Zoe with `$15.00` base allowance and `$13.50` current total
+- Seed family state for Daddy/Zoe with `$15.00` base allowance and `$13.50` current total
 - Role-aware parent and child app shells
 - Ledger-driven allowance summary
 - Idempotent missed-task deductions
@@ -28,6 +28,8 @@ Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app 
 - Parent child-profile and invite-link flow with iOS share sheet handoff
 - Invite acceptance service that requests/verifies SMS OTP and calls the `accept-child-invite` Edge Function
 - Supabase Edge Function source for hashing invite tokens and linking authenticated child users
+- Parent invite flow for a second parent account, with `Daddy` / `Mamma` seed display names
+- Supabase schema and Edge Function source for `parent_invites`
 - Child dashboard
 - Task detail
 - Mock camera/evidence capture
@@ -62,6 +64,7 @@ The schema lives in:
 ```text
 supabase/migrations/0001_initial_schema.sql
 supabase/migrations/0002_child_profiles_and_invites.sql
+supabase/migrations/0003_parent_invites.sql
 ```
 
 Evidence files should be stored under paths beginning with the family id:
@@ -78,6 +81,15 @@ supabase/functions/accept-child-invite/index.ts
 
 The function expects an authenticated Supabase user and a raw invite token. It hashes the token with SHA-256, matches it against `child_invites.token_hash`, links the child profile to the authenticated user, upserts the `family_members` child row, and marks the invite accepted.
 
+Second-parent acceptance is handled by:
+
+```text
+supabase/functions/accept-parent-invite/index.ts
+supabase/migrations/0003_parent_invites.sql
+```
+
+The parent function also expects an authenticated Supabase user and raw invite token. It hashes the token, matches `parent_invites.token_hash`, upserts a `family_members` row with `role = 'parent'`, and marks the invite accepted.
+
 To apply migrations without saving the database password:
 
 ```sh
@@ -90,10 +102,11 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
 
 ## Next Slices
 
-1. Deploy `accept-child-invite` and wire parent invite creation to store SHA-256 token hashes.
-2. Add Supabase auth bootstrapping and route from `family_members.role`.
-3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
-4. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
-5. Add WidgetKit targets backed by shared App Group state.
-6. Add local notification scheduling and Universal Links.
-7. Move AI review behind a server-side endpoint with structured JSON output.
+1. Apply `0003_parent_invites.sql`, then deploy `accept-child-invite` and `accept-parent-invite`.
+2. Wire parent/child invite creation to store SHA-256 token hashes in Supabase.
+3. Add Supabase auth bootstrapping and route from `family_members.role`.
+4. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
+5. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
+6. Add WidgetKit targets backed by shared App Group state.
+7. Add local notification scheduling and Universal Links.
+8. Move AI review behind a server-side endpoint with structured JSON output.

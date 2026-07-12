@@ -19,7 +19,7 @@ struct ParentWorkspaceView: View {
             } else if selectedTab == .chores {
                 ChoreManagementView()
             } else {
-                ChildInviteManagementView()
+                FamilyManagementView()
             }
         }
         .background(Color.paperWhite.ignoresSafeArea())
@@ -38,7 +38,7 @@ struct ParentWorkspaceView: View {
 enum ParentTab: String, CaseIterable, Identifiable {
     case review
     case chores
-    case children
+    case family
 
     var id: String { rawValue }
     var title: String {
@@ -47,8 +47,8 @@ enum ParentTab: String, CaseIterable, Identifiable {
             return "Review"
         case .chores:
             return "Chores"
-        case .children:
-            return "Children"
+        case .family:
+            return "Family"
         }
     }
 }
@@ -309,14 +309,64 @@ struct ChoreManagementView: View {
     }
 }
 
-struct ChildInviteManagementView: View {
+struct FamilyManagementView: View {
     @EnvironmentObject private var store: AppStore
     @State private var childName = "Zoe"
     @State private var phoneNumber = ""
+    @State private var parentName = "Mamma"
+    @State private var parentPhoneNumber = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Parents")
+                        .font(.title3.weight(.heavy))
+
+                    ForEach(store.members.filter { $0.role == .parent }) { member in
+                        ParentMemberCard(member: member, isCurrentSession: member.userId == store.session.userId)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Invite Parent")
+                        .font(.title3.weight(.heavy))
+
+                    VStack(spacing: 12) {
+                        TextField("Parent name", text: $parentName)
+                            .textContentType(.givenName)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+
+                        TextField("Phone number", text: $parentPhoneNumber)
+                            .textContentType(.telephoneNumber)
+                            .keyboardType(.phonePad)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+
+                        PrimaryButton(title: "Create Parent Invite", systemImage: "person.badge.plus") {
+                            store.createParentInvite(parentName: parentName, phoneNumber: parentPhoneNumber)
+                        }
+                    }
+                    .padding(16)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.softGray, lineWidth: 1)
+                    )
+                }
+
+                if !store.parentInvites.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Parent Links")
+                            .font(.title3.weight(.heavy))
+
+                        ForEach(store.parentInvites) { invite in
+                            ParentInviteCard(invite: invite)
+                        }
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Children")
                         .font(.title3.weight(.heavy))
@@ -327,7 +377,7 @@ struct ChildInviteManagementView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Invite")
+                    Text("Invite Child")
                         .font(.title3.weight(.heavy))
 
                     VStack(spacing: 12) {
@@ -342,7 +392,7 @@ struct ChildInviteManagementView: View {
                             .font(.body.weight(.semibold))
                             .textFieldStyle(.roundedBorder)
 
-                        PrimaryButton(title: "Create Invite", systemImage: "link.badge.plus") {
+                        PrimaryButton(title: "Create Child Invite", systemImage: "link.badge.plus") {
                             store.createChildInvite(childName: childName, phoneNumber: phoneNumber)
                         }
                     }
@@ -355,7 +405,7 @@ struct ChildInviteManagementView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Links")
+                    Text("Child Links")
                         .font(.title3.weight(.heavy))
 
                     if store.childInvites.isEmpty {
@@ -370,6 +420,42 @@ struct ChildInviteManagementView: View {
             }
             .padding(22)
         }
+    }
+}
+
+struct ParentMemberCard: View {
+    var member: FamilyMember
+    var isCurrentSession: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(isCurrentSession ? Color.sunYellow : Color.acidLime)
+                    .frame(width: 48, height: 48)
+                Image(systemName: isCurrentSession ? "person.fill.checkmark" : "person.2.fill")
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color.inkBlack)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(member.displayName)
+                    .font(.headline)
+                    .foregroundStyle(Color.inkBlack)
+
+                Text(isCurrentSession ? "Signed in here" : "Can review and manage chores")
+                    .font(.caption)
+                    .foregroundStyle(Color.mutedGray)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.softGray, lineWidth: 1)
+        )
     }
 }
 
@@ -405,6 +491,110 @@ struct ChildProfileCard: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
         )
+    }
+}
+
+struct ParentInviteCard: View {
+    @EnvironmentObject private var store: AppStore
+    var invite: ParentInvite
+
+    private var status: ParentInviteStatus {
+        invite.resolvedStatus()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(invite.parentName)
+                        .font(.headline)
+                        .foregroundStyle(Color.inkBlack)
+                    if let phoneNumber = invite.phoneNumber {
+                        Text(phoneNumber)
+                            .font(.caption)
+                            .foregroundStyle(Color.mutedGray)
+                    }
+                }
+
+                Spacer()
+
+                Text(status.title)
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .foregroundStyle(Color.inkBlack)
+                    .background(statusColor, in: Capsule())
+            }
+
+            Text(invite.inviteURL.absoluteString)
+                .font(.caption.monospaced())
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.softGray.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            if status == .pending {
+                HStack(spacing: 10) {
+                    ShareLink(
+                        item: invite.inviteURL,
+                        subject: Text("Join \(AppBrand.displayName)"),
+                        message: Text("\(store.parentName) invited you to help manage \(AppBrand.displayName).")
+                    ) {
+                        Label("Send Message", systemImage: "message.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+
+                    Button {
+                        store.revokeParentInvite(invite)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.bold))
+                            .frame(width: 48, height: 48)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.softGray, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .accessibilityLabel("Revoke parent invite")
+                }
+
+                #if DEBUG
+                Button {
+                    store.markParentInviteAccepted(invite)
+                } label: {
+                    Label("Mark Accepted", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                        .foregroundStyle(Color.inkBlack)
+                        .background(Color.sunYellow.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                #endif
+            }
+        }
+        .padding(16)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(status == .pending ? Color.sunYellow : Color.softGray, lineWidth: 1.5)
+        )
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .pending:
+            return .sunYellow.opacity(0.5)
+        case .accepted:
+            return .acidLime.opacity(0.55)
+        case .expired:
+            return .warmOrange.opacity(0.35)
+        case .revoked:
+            return .softGray
+        }
     }
 }
 
