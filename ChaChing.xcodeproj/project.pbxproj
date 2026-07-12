@@ -25,6 +25,7 @@
 		D00D00000000000000000043 /* SupabaseRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00D00000000000000000040 /* SupabaseRecords.swift */; };
 		D00D00000000000000000044 /* SupabaseRemoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00D00000000000000000041 /* SupabaseRemoteStore.swift */; };
 		D00D00000000000000000047 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = D00D00000000000000000046 /* Supabase */; };
+		D00D00000000000000000050 /* InviteAcceptanceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00D0000000000000000004F /* InviteAcceptanceService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,7 @@
 		D00D0000000000000000003F /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
 		D00D00000000000000000040 /* SupabaseRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRecords.swift; sourceTree = "<group>"; };
 		D00D00000000000000000041 /* SupabaseRemoteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseRemoteStore.swift; sourceTree = "<group>"; };
+		D00D0000000000000000004F /* InviteAcceptanceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteAcceptanceService.swift; sourceTree = "<group>"; };
 		D00D0000000000000000004A /* 0001_initial_schema.sql */ = {isa = PBXFileReference; lastKnownFileType = text; path = 0001_initial_schema.sql; sourceTree = "<group>"; };
 		D00D0000000000000000004C /* dev_seed.sql */ = {isa = PBXFileReference; lastKnownFileType = text; path = dev_seed.sql; sourceTree = "<group>"; };
 		D00D0000000000000000004D /* Package.resolved */ = {isa = PBXFileReference; lastKnownFileType = text; path = Package.resolved; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 				D00D0000000000000000003F /* SupabaseClientProvider.swift */,
 				D00D00000000000000000040 /* SupabaseRecords.swift */,
 				D00D00000000000000000041 /* SupabaseRemoteStore.swift */,
+				D00D0000000000000000004F /* InviteAcceptanceService.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -272,6 +275,7 @@
 				D00D00000000000000000042 /* SupabaseClientProvider.swift in Sources */,
 				D00D00000000000000000043 /* SupabaseRecords.swift in Sources */,
 				D00D00000000000000000044 /* SupabaseRemoteStore.swift in Sources */,
+				D00D00000000000000000050 /* InviteAcceptanceService.swift in Sources */,
 				D00D0000000000000000002A /* AppBrand.swift in Sources */,
 				D00D0000000000000000002C /* Money.swift in Sources */,
 				D00D0000000000000000002E /* Models.swift in Sources */,

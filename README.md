@@ -26,6 +26,8 @@ Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app 
 - Excuse flow that voids deductions
 - Parent bonus flow
 - Parent child-profile and invite-link flow with iOS share sheet handoff
+- Invite acceptance service that requests/verifies SMS OTP and calls the `accept-child-invite` Edge Function
+- Supabase Edge Function source for hashing invite tokens and linking authenticated child users
 - Child dashboard
 - Task detail
 - Mock camera/evidence capture
@@ -68,6 +70,14 @@ Evidence files should be stored under paths beginning with the family id:
 {familyId}/{taskOccurrenceId}/original.jpg
 ```
 
+Invite acceptance is handled by:
+
+```text
+supabase/functions/accept-child-invite/index.ts
+```
+
+The function expects an authenticated Supabase user and a raw invite token. It hashes the token with SHA-256, matches it against `child_invites.token_hash`, links the child profile to the authenticated user, upserts the `family_members` child row, and marks the invite accepted.
+
 To apply migrations without saving the database password:
 
 ```sh
@@ -80,8 +90,8 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
 
 ## Next Slices
 
-1. Add Supabase auth and route from `family_members.role`.
-2. Add the invite-acceptance Edge Function that hashes tokens and links child profiles to child auth users.
+1. Deploy `accept-child-invite` and wire parent invite creation to store SHA-256 token hashes.
+2. Add Supabase auth bootstrapping and route from `family_members.role`.
 3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
 4. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
 5. Add WidgetKit targets backed by shared App Group state.

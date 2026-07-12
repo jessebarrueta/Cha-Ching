@@ -8,10 +8,13 @@ final class AppStore: ObservableObject {
     @Published var childProfiles: [ChildProfile]
     @Published var childInvites: [ChildInvite]
     @Published var pendingInvite: PendingInvite?
+    @Published var inviteAcceptanceState: InviteAcceptanceState
     @Published var chores: [ChoreDefinition]
     @Published var occurrences: [TaskOccurrence]
     @Published var submissions: [ChoreSubmission]
     @Published var ledger: [LedgerEntry]
+
+    private let inviteAcceptanceService: InviteAcceptanceServicing
 
     let familyId: UUID
     let parentId: UUID
@@ -21,7 +24,10 @@ final class AppStore: ObservableObject {
     let childName: String
     let parentName: String
 
-    init(snapshot: SeedSnapshot = SeedData.snapshot()) {
+    init(
+        snapshot: SeedSnapshot = SeedData.snapshot(),
+        inviteAcceptanceService: InviteAcceptanceServicing = SupabaseInviteAcceptanceService()
+    ) {
         self.familyId = snapshot.familyId
         self.parentId = snapshot.parentId
         self.childId = snapshot.childId
@@ -29,11 +35,13 @@ final class AppStore: ObservableObject {
         self.familyName = snapshot.familyName
         self.childName = snapshot.childName
         self.parentName = snapshot.parentName
+        self.inviteAcceptanceService = inviteAcceptanceService
         self.session = AppSession(userId: snapshot.parentId, role: .parent, displayName: snapshot.parentName)
         self.members = snapshot.members
         self.childProfiles = snapshot.childProfiles
         self.childInvites = snapshot.childInvites
         self.pendingInvite = nil
+        self.inviteAcceptanceState = .idle
         self.chores = snapshot.chores
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
@@ -115,10 +123,60 @@ final class AppStore: ObservableObject {
         }
 
         pendingInvite = PendingInvite(token: token, url: url)
+        inviteAcceptanceState = .idle
     }
 
     func clearPendingInvite() {
         pendingInvite = nil
+        inviteAcceptanceState = .idle
+    }
+
+    func requestInviteSMSCode(phoneNumber: String) async {
+        guard let normalizedPhoneNumber = Self.normalizedPhoneNumber(phoneNumber) else {
+            inviteAcceptanceState = .failed(InviteAcceptanceError.invalidPhoneNumber.localizedDescription)
+            return
+        }
+
+        inviteAcceptanceState = .requestingCode
+
+        do {
+            try await inviteAcceptanceService.requestSMSCode(phoneNumber: normalizedPhoneNumber)
+            inviteAcceptanceState = .codeSent(phoneNumber: normalizedPhoneNumber)
+        } catch {
+            inviteAcceptanceState = .failed(error.localizedDescription)
+        }
+    }
+
+    func acceptPendingInvite(phoneNumber: String, code: String) async {
+        guard let pendingInvite else {
+            inviteAcceptanceState = .failed(InviteAcceptanceError.missingInvite.localizedDescription)
+            return
+        }
+
+        guard let normalizedPhoneNumber = Self.normalizedPhoneNumber(phoneNumber) else {
+            inviteAcceptanceState = .failed(InviteAcceptanceError.invalidPhoneNumber.localizedDescription)
+            return
+        }
+
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            inviteAcceptanceState = .failed(InviteAcceptanceError.invalidCode.localizedDescription)
+            return
+        }
+
+        inviteAcceptanceState = .accepting
+
+        do {
+            _ = try await inviteAcceptanceService.verifySMSCode(
+                phoneNumber: normalizedPhoneNumber,
+                code: trimmedCode
+            )
+            let acceptedInvite = try await inviteAcceptanceService.acceptChildInvite(token: pendingInvite.token)
+            applyAcceptedInvite(acceptedInvite, token: pendingInvite.token)
+            inviteAcceptanceState = .accepted(childName: acceptedInvite.childName)
+        } catch {
+            inviteAcceptanceState = .failed(error.localizedDescription)
+        }
     }
 
     func createChildInvite(childName: String, phoneNumber: String?) {
@@ -295,6 +353,49 @@ final class AppStore: ObservableObject {
         mutation(&childProfiles[index])
     }
 
+    private func applyAcceptedInvite(_ acceptedInvite: AcceptedChildInvite, token: String) {
+        let now = Date()
+
+        if let index = childInvites.firstIndex(where: { $0.token == token }) {
+            childInvites[index].status = .accepted
+            childInvites[index].acceptedAt = now
+            childInvites[index].acceptedChildUserId = acceptedInvite.acceptedChildUserId
+        }
+
+        if let index = childProfiles.firstIndex(where: { $0.id == acceptedInvite.childProfileId }) {
+            childProfiles[index].linkedUserId = acceptedInvite.acceptedChildUserId
+            childProfiles[index].updatedAt = now
+        } else {
+            childProfiles.append(
+                ChildProfile(
+                    id: acceptedInvite.childProfileId,
+                    familyId: acceptedInvite.familyId,
+                    displayName: acceptedInvite.childName,
+                    linkedUserId: acceptedInvite.acceptedChildUserId,
+                    createdByParentId: parentId,
+                    updatedAt: now
+                )
+            )
+        }
+
+        if !members.contains(where: { $0.userId == acceptedInvite.acceptedChildUserId && $0.role == .child }) {
+            members.append(
+                FamilyMember(
+                    familyId: acceptedInvite.familyId,
+                    userId: acceptedInvite.acceptedChildUserId,
+                    role: .child,
+                    displayName: acceptedInvite.childName
+                )
+            )
+        }
+
+        session = AppSession(
+            userId: acceptedInvite.acceptedChildUserId,
+            role: .child,
+            displayName: acceptedInvite.childName
+        )
+    }
+
     private func upsertChildProfile(named childName: String, phoneNumber: String?) -> UUID {
         if let index = childProfiles.firstIndex(where: { $0.displayName.caseInsensitiveCompare(childName) == .orderedSame }) {
             childProfiles[index].phoneNumber = phoneNumber
@@ -334,6 +435,27 @@ final class AppStore: ObservableObject {
 
         let token = pathComponents[2].trimmingCharacters(in: .whitespacesAndNewlines)
         return token.isEmpty ? nil : token
+    }
+
+    private static func normalizedPhoneNumber(_ rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        if trimmed.hasPrefix("+") {
+            let digits = trimmed.dropFirst().filter(\.isNumber)
+            return digits.count >= 8 ? "+\(digits)" : nil
+        }
+
+        let digits = trimmed.filter(\.isNumber)
+        if digits.count == 10 {
+            return "+1\(digits)"
+        }
+        if digits.count == 11, digits.first == "1" {
+            return "+\(digits)"
+        }
+        return nil
     }
 
     private func decideSubmission(for occurrence: TaskOccurrence, decision: ParentDecision.Decision, note: String? = nil) {
@@ -412,4 +534,36 @@ struct PendingInvite: Identifiable, Equatable {
     var url: URL
 
     var id: String { token }
+}
+
+enum InviteAcceptanceState: Equatable {
+    case idle
+    case requestingCode
+    case codeSent(phoneNumber: String)
+    case accepting
+    case accepted(childName: String)
+    case failed(String)
+
+    var isWorking: Bool {
+        switch self {
+        case .requestingCode, .accepting:
+            return true
+        case .idle, .codeSent, .accepted, .failed:
+            return false
+        }
+    }
+
+    var errorMessage: String? {
+        if case .failed(let message) = self {
+            return message
+        }
+        return nil
+    }
+
+    var acceptedChildName: String? {
+        if case .accepted(let childName) = self {
+            return childName
+        }
+        return nil
+    }
 }

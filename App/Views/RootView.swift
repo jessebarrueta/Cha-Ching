@@ -99,6 +99,9 @@ struct InviteLandingSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
     var invite: PendingInvite
+    @State private var phoneNumber = ""
+    @State private var smsCode = ""
+    @State private var hasRequestedCode = false
 
     var body: some View {
         NavigationStack {
@@ -121,29 +124,66 @@ struct InviteLandingSheet: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("You're invited")
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    Text("Finish setting up this child account to join \(store.familyName).")
+                    Text("Sign in with this phone to join \(store.familyName).")
                         .font(.body)
                         .foregroundStyle(Color.mutedGray)
                 }
 
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("Phone number", text: $phoneNumber)
+                        .textContentType(.telephoneNumber)
+                        .keyboardType(.phonePad)
+                        .font(.body.weight(.semibold))
+                        .textFieldStyle(.roundedBorder)
+
+                    if shouldShowCodeField {
+                        TextField("Text code", text: $smsCode)
+                            .textContentType(.oneTimeCode)
+                            .keyboardType(.numberPad)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    if let errorMessage = store.inviteAcceptanceState.errorMessage {
+                        Text(errorMessage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.warmOrange)
+                    }
+
+                    if let childName = store.inviteAcceptanceState.acceptedChildName {
+                        Label("\(childName) is connected", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(Color.green)
+                    }
+
+                    PrimaryButton(title: primaryButtonTitle, systemImage: primaryButtonIcon) {
+                        performPrimaryAction()
+                    }
+                    .disabled(store.inviteAcceptanceState.isWorking)
+                }
+
+                #if DEBUG
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Invite code")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.mutedGray)
                     Text(invite.token)
-                        .font(.callout.monospaced().weight(.bold))
+                        .font(.caption.monospaced().weight(.bold))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
                         .background(Color.softGray.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    Button {
+                        store.switchSession(to: .child)
+                        store.clearPendingInvite()
+                        dismiss()
+                    } label: {
+                        Label("Preview as Child", systemImage: "sparkles")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.inkBlack)
+                    }
+                    .buttonStyle(.plain)
                 }
+                #endif
 
                 Spacer()
-
-                PrimaryButton(title: "Continue", systemImage: "arrow.right") {
-                    store.switchSession(to: .child)
-                    store.clearPendingInvite()
-                    dismiss()
-                }
             }
             .padding(22)
             .background(Color.paperWhite.ignoresSafeArea())
@@ -155,6 +195,62 @@ struct InviteLandingSheet: View {
                         store.clearPendingInvite()
                         dismiss()
                     }
+                }
+            }
+        }
+    }
+
+    private var primaryButtonTitle: String {
+        switch store.inviteAcceptanceState {
+        case .requestingCode:
+            return "Sending Code"
+        case .codeSent, .failed:
+            return shouldShowCodeField ? "Accept Invite" : "Send Code"
+        case .accepting:
+            return "Accepting"
+        case .accepted:
+            return "Continue"
+        case .idle:
+            return "Send Code"
+        }
+    }
+
+    private var primaryButtonIcon: String {
+        switch store.inviteAcceptanceState {
+        case .accepted:
+            return "arrow.right"
+        case .codeSent, .accepting:
+            return "checkmark.circle.fill"
+        case .idle, .requestingCode, .failed:
+            return shouldShowCodeField ? "checkmark.circle.fill" : "message.fill"
+        }
+    }
+
+    private var shouldShowCodeField: Bool {
+        switch store.inviteAcceptanceState {
+        case .codeSent, .accepting, .accepted:
+            return true
+        case .idle, .requestingCode, .failed:
+            return hasRequestedCode
+        }
+    }
+
+    private func performPrimaryAction() {
+        if store.inviteAcceptanceState.acceptedChildName != nil {
+            store.clearPendingInvite()
+            dismiss()
+            return
+        }
+
+        if hasRequestedCode {
+            Task {
+                await store.acceptPendingInvite(phoneNumber: phoneNumber, code: smsCode)
+            }
+        } else {
+            Task {
+                await store.requestInviteSMSCode(phoneNumber: phoneNumber)
+                if case .codeSent = store.inviteAcceptanceState {
+                    hasRequestedCode = true
                 }
             }
         }
