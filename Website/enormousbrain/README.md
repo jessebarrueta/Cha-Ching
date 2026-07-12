@@ -47,6 +47,7 @@ https://enormousbrain.com/.well-known/apple-app-site-association
 ```
 
 The final file must be served over HTTPS without a redirect. It should not have a `.json` extension.
+On GoDaddy, make sure this is uploaded as a file named `apple-app-site-association`, not a folder named `apple-app-site-association`.
 
 ## Current App Values
 

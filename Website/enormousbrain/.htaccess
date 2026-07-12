@@ -4,5 +4,4 @@ RewriteRule ^cha-ching/invite/[^/]+/?$ /cha-ching/invite/index.html [L]
 
 <Files "apple-app-site-association">
   ForceType application/json
-  Header set Content-Type "application/json"
 </Files>
