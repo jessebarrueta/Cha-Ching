@@ -33,6 +33,7 @@
 		D00D00000000000000000012 /* ChaChingApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChaChingApp.swift; sourceTree = "<group>"; };
 		D00D00000000000000000014 /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		D00D00000000000000000016 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		D00D0000000000000000004E /* ChaChing.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ChaChing.entitlements; sourceTree = "<group>"; };
 		D00D00000000000000000018 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		D00D0000000000000000001B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		D00D0000000000000000001D /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
@@ -101,6 +102,7 @@
 				D00D00000000000000000012 /* ChaChingApp.swift */,
 				D00D00000000000000000014 /* AppStore.swift */,
 				D00D00000000000000000016 /* Info.plist */,
+				D00D0000000000000000004E /* ChaChing.entitlements */,
 				D00D00000000000000000017 /* DesignSystem */,
 				D00D0000000000000000003E /* Networking */,
 				D00D0000000000000000001A /* Views */,
@@ -421,9 +423,10 @@
 			baseConfigurationReference = D00D00000000000000000010 /* AppBrand.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/ChaChing.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = RER3T958QE;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -442,9 +445,10 @@
 			baseConfigurationReference = D00D00000000000000000010 /* AppBrand.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = App/ChaChing.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = RER3T958QE;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;

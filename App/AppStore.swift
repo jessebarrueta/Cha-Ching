@@ -7,6 +7,7 @@ final class AppStore: ObservableObject {
     @Published var members: [FamilyMember]
     @Published var childProfiles: [ChildProfile]
     @Published var childInvites: [ChildInvite]
+    @Published var pendingInvite: PendingInvite?
     @Published var chores: [ChoreDefinition]
     @Published var occurrences: [TaskOccurrence]
     @Published var submissions: [ChoreSubmission]
@@ -32,6 +33,7 @@ final class AppStore: ObservableObject {
         self.members = snapshot.members
         self.childProfiles = snapshot.childProfiles
         self.childInvites = snapshot.childInvites
+        self.pendingInvite = nil
         self.chores = snapshot.chores
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
@@ -105,6 +107,18 @@ final class AppStore: ObservableObject {
         case .child:
             session = AppSession(userId: childId, role: .child, displayName: childName)
         }
+    }
+
+    func handleIncomingURL(_ url: URL) {
+        guard let token = inviteToken(from: url) else {
+            return
+        }
+
+        pendingInvite = PendingInvite(token: token, url: url)
+    }
+
+    func clearPendingInvite() {
+        pendingInvite = nil
     }
 
     func createChildInvite(childName: String, phoneNumber: String?) {
@@ -306,6 +320,22 @@ final class AppStore: ObservableObject {
         return "\(namePrefix)-\(UUID().uuidString.prefix(8).lowercased())"
     }
 
+    private func inviteToken(from url: URL) -> String? {
+        guard url.host == "enormousbrain.com" else {
+            return nil
+        }
+
+        let pathComponents = url.pathComponents.filter { $0 != "/" }
+        guard pathComponents.count >= 3,
+              pathComponents[0] == "cha-ching",
+              pathComponents[1] == "invite" else {
+            return nil
+        }
+
+        let token = pathComponents[2].trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : token
+    }
+
     private func decideSubmission(for occurrence: TaskOccurrence, decision: ParentDecision.Decision, note: String? = nil) {
         guard let index = submissions.firstIndex(where: { $0.taskOccurrenceId == occurrence.id }) else {
             return
@@ -375,4 +405,11 @@ struct AppSession: Equatable {
     var userId: UUID
     var role: FamilyMemberRole
     var displayName: String
+}
+
+struct PendingInvite: Identifiable, Equatable {
+    var token: String
+    var url: URL
+
+    var id: String { token }
 }

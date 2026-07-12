@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cha-Ching Invite</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #050505;
+        --paper: #f8f7f2;
+        --line: #e9e9e5;
+        --lime: #a8e600;
+        --yellow: #ffcc00;
+        --orange: #ff5a1f;
+        --blue: #1d20ff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+        background: var(--paper);
+        color: var(--ink);
+        display: grid;
+        place-items: center;
+        padding: 28px;
+      }
+
+      main {
+        width: min(100%, 430px);
+      }
+
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 28px;
+      }
+
+      .mark {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--yellow), var(--lime));
+        display: grid;
+        place-items: center;
+        font-size: 24px;
+        font-weight: 900;
+      }
+
+      h1 {
+        font-size: 42px;
+        line-height: 0.95;
+        margin: 0 0 14px;
+        letter-spacing: 0;
+      }
+
+      p {
+        font-size: 17px;
+        line-height: 1.45;
+        margin: 0 0 22px;
+        color: #4f4f4a;
+      }
+
+      .panel {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 18px;
+        margin: 22px 0;
+      }
+
+      .token {
+        display: block;
+        width: 100%;
+        overflow-wrap: anywhere;
+        font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--line);
+        border-radius: 10px;
+        padding: 12px;
+      }
+
+      .button {
+        display: inline-flex;
+        width: 100%;
+        min-height: 52px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        background: var(--ink);
+        color: var(--paper);
+        text-decoration: none;
+        font-size: 17px;
+        font-weight: 800;
+      }
+
+      .mascots {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        margin-top: 34px;
+      }
+
+      .blob {
+        width: 82px;
+        height: 58px;
+        border-radius: 32px 32px 10px 10px;
+        background: var(--orange);
+      }
+
+      .triangle {
+        width: 0;
+        height: 0;
+        border-left: 54px solid transparent;
+        border-right: 54px solid transparent;
+        border-bottom: 86px solid var(--blue);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand" aria-label="Cha-Ching">
+        <div class="mark">$</div>
+        <strong>Cha-Ching</strong>
+      </div>
+
+      <h1>You're invited.</h1>
+      <p>Open this invite on an iPhone with the app installed. If the app is not installed yet, keep this page open and use the invite code after installing.</p>
+
+      <div class="panel">
+        <p>Invite code</p>
+        <code class="token" id="invite-token">Loading...</code>
+      </div>
+
+      <a class="button" href="#" id="open-app">Open app</a>
+
+      <div class="mascots" aria-hidden="true">
+        <div class="blob"></div>
+        <div class="triangle"></div>
+      </div>
+    </main>
+
+    <script>
+      const path = window.location.pathname.replace(/\/$/, "");
+      const token = decodeURIComponent(path.substring(path.lastIndexOf("/") + 1));
+      const tokenElement = document.getElementById("invite-token");
+      const openApp = document.getElementById("open-app");
+
+      tokenElement.textContent = token || "Missing invite code";
+      openApp.href = window.location.href;
+    </script>
+  </body>
+</html>
