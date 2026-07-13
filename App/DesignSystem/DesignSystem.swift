@@ -135,29 +135,29 @@ struct MascotCluster: View {
             BlueTriangle()
                 .fill(Color.electricBlue)
                 .frame(width: 112 * scale, height: 92 * scale)
-                .offset(x: 36 * scale, y: 4 * scale)
                 .overlay(alignment: .center) {
                     MascotFace(scale: scale * 0.75)
-                        .offset(x: 28 * scale, y: -8 * scale)
+                        .offset(x: 8 * scale, y: -8 * scale)
                 }
+                .offset(x: 36 * scale, y: 4 * scale)
 
             OrangeBlob()
                 .fill(Color.warmOrange)
                 .frame(width: 94 * scale, height: 78 * scale)
-                .offset(x: -42 * scale, y: 0)
                 .overlay(alignment: .center) {
                     MascotFace(scale: scale * 0.72)
                         .offset(x: -16 * scale, y: -8 * scale)
                 }
+                .offset(x: -42 * scale, y: 0)
 
             PinkDome()
                 .fill(Color.hotPink)
                 .frame(width: 72 * scale, height: 54 * scale)
-                .offset(x: 76 * scale, y: 5 * scale)
                 .overlay(alignment: .center) {
                     MascotFace(scale: scale * 0.55)
                         .offset(x: 2 * scale, y: -4 * scale)
                 }
+                .offset(x: 76 * scale, y: 5 * scale)
         }
         .frame(width: 220 * scale, height: 118 * scale)
         .accessibilityHidden(true)
