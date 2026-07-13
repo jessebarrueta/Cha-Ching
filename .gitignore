@@ -3,6 +3,7 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 simulator-*.png
+supabase/.temp/
 .env
 .env.*
 !.env.example

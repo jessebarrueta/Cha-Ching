@@ -60,6 +60,40 @@ App/Networking/SupabaseClientProvider.swift
 
 The checked-in key is the Supabase publishable key, which is expected to be present in client apps. Do not commit the database password, service-role key, or OpenAI keys.
 
+### Edge Function Secrets
+
+Use Supabase secrets for server-side API keys and model configuration. The checked-in template is:
+
+```text
+supabase-secrets.example.env
+```
+
+Create your local secrets file, fill in the OpenAI key, then upload it to Supabase:
+
+```sh
+cp supabase-secrets.example.env .env.supabase.local
+$EDITOR .env.supabase.local
+scripts/set-supabase-secrets.sh
+```
+
+If the CLI has not been authenticated yet, run `supabase login` first, or set `SUPABASE_ACCESS_TOKEN` for the command.
+
+The script targets project ref `pjvgtmxyxrfhabyuefne` by default. To override it:
+
+```sh
+SUPABASE_PROJECT_REF=your-project-ref scripts/set-supabase-secrets.sh
+```
+
+Current app secrets:
+
+```text
+OPENAI_API_KEY
+OPENAI_REVIEW_MODEL
+OPENAI_REVIEW_IMAGE_DETAIL
+```
+
+Supabase-hosted Edge Functions are expected to provide `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to the invite/review functions. Do not put those values in the iOS app.
+
 The schema lives in:
 
 ```text
@@ -91,6 +125,26 @@ supabase/migrations/0003_parent_invites.sql
 
 The parent function also expects an authenticated Supabase user and raw invite token. It hashes the token, matches `parent_invites.token_hash`, upserts a `family_members` row with `role = 'parent'`, and marks the invite accepted.
 
+AI evidence review is handled by:
+
+```text
+supabase/functions/review-evidence/index.ts
+```
+
+The function expects an authenticated family member and a `submission_id`. It loads the submission, occurrence, chore definition, and private evidence image server-side, asks OpenAI for structured JSON, stores the advisory result in `chore_submissions.ai_result`, and moves the occurrence to `ai_reviewed` unless a parent has already made a final decision.
+
+Deploy it with:
+
+```sh
+supabase functions deploy review-evidence --project-ref pjvgtmxyxrfhabyuefne
+```
+
+Invoke it from the app with:
+
+```json
+{ "submission_id": "..." }
+```
+
 To apply migrations without saving the database password:
 
 ```sh
@@ -107,6 +161,6 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
 2. Add Supabase auth bootstrapping and route from `family_members.role`.
 3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
 4. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
-5. Add WidgetKit targets backed by shared App Group state.
-6. Add local notification scheduling and Universal Links.
-7. Move AI review behind a server-side endpoint with structured JSON output.
+5. Wire the app submission flow to call `review-evidence` after uploading evidence.
+6. Add WidgetKit targets backed by shared App Group state.
+7. Add local notification scheduling and Universal Links.
