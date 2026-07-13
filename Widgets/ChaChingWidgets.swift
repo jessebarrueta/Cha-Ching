@@ -3,8 +3,11 @@ import WidgetKit
 
 struct ChaChingAllowanceEntry: TimelineEntry {
     let date: Date
+    let periodTitle: String
+    let childName: String
     let currentCents: Int
     let baseCents: Int
+    let rolloverDebtCents: Int
     let choresLeft: Int
     let nextChoreTitle: String
     let nextChoreTime: String
@@ -12,6 +15,21 @@ struct ChaChingAllowanceEntry: TimelineEntry {
     var progress: Double {
         guard baseCents > 0 else { return 0 }
         return min(1, Double(currentCents) / Double(baseCents))
+    }
+
+    var hasRolloverDebt: Bool {
+        rolloverDebtCents > 0
+    }
+
+    var choresLeftText: String {
+        switch choresLeft {
+        case 0:
+            return "All chores done"
+        case 1:
+            return "1 chore left"
+        default:
+            return "\(choresLeft) chores left"
+        }
     }
 }
 
@@ -21,18 +39,39 @@ struct ChaChingAllowanceProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ChaChingAllowanceEntry) -> Void) {
-        completion(sampleEntry)
+        completion(context.isPreview ? sampleEntry : currentEntry)
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ChaChingAllowanceEntry>) -> Void) {
-        completion(Timeline(entries: [sampleEntry], policy: .after(Date().addingTimeInterval(30 * 60))))
+        completion(Timeline(entries: [currentEntry], policy: .after(Date().addingTimeInterval(30 * 60))))
+    }
+
+    private var currentEntry: ChaChingAllowanceEntry {
+        guard let snapshot = ChaChingWidgetSharedState.loadSnapshot() else {
+            return sampleEntry
+        }
+
+        return ChaChingAllowanceEntry(
+            date: snapshot.updatedAt,
+            periodTitle: snapshot.periodTitle,
+            childName: snapshot.childName,
+            currentCents: snapshot.currentCents,
+            baseCents: snapshot.baseCents,
+            rolloverDebtCents: snapshot.rolloverDebtCents,
+            choresLeft: snapshot.choresLeft,
+            nextChoreTitle: snapshot.nextChoreTitle,
+            nextChoreTime: snapshot.nextChoreTime
+        )
     }
 
     private var sampleEntry: ChaChingAllowanceEntry {
         ChaChingAllowanceEntry(
             date: Date(),
+            periodTitle: "This Week",
+            childName: "Zoe",
             currentCents: 1_350,
             baseCents: 1_500,
+            rolloverDebtCents: 0,
             choresLeft: 2,
             nextChoreTitle: "Take Dog Out",
             nextChoreTime: "8:00 PM"
@@ -60,7 +99,7 @@ struct ChaChingAllowanceWidgetView: View {
     private var smallWidget: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("This Week")
+                Text(entry.periodTitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.ccMuted)
                 Spacer()
@@ -75,7 +114,7 @@ struct ChaChingAllowanceWidgetView: View {
 
             ProgressBar(value: entry.progress)
 
-            Text("\(entry.choresLeft) chores left")
+            Text(entry.choresLeftText)
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(Color.ccInk)
 
@@ -88,7 +127,7 @@ struct ChaChingAllowanceWidgetView: View {
     private var mediumWidget: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("This Week")
+                Text(entry.periodTitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.ccMuted)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -102,7 +141,7 @@ struct ChaChingAllowanceWidgetView: View {
 
                 ProgressBar(value: entry.progress)
 
-                Text("\(entry.choresLeft) chores left")
+                Text(entry.choresLeftText)
                     .font(.headline.weight(.heavy))
                     .foregroundStyle(Color.ccInk)
 
@@ -134,7 +173,7 @@ struct ChaChingAllowanceWidgetView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(dollars(entry.currentCents))
                 .font(.headline.weight(.heavy))
-            Text("\(entry.choresLeft) chores left")
+            Text(entry.choresLeftText)
             Text(entry.nextChoreTime)
         }
     }
@@ -161,7 +200,7 @@ struct ProgressBar: View {
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: max(10, proxy.size.width * value))
+                    .frame(width: value <= 0 ? 0 : max(10, proxy.size.width * value))
             }
         }
         .frame(height: 10)

@@ -6,9 +6,5 @@
 	<array>
 		<string>group.com.artofsullivan.chaching</string>
 	</array>
-	<key>com.apple.developer.associated-domains</key>
-	<array>
-		<string>applinks:enormousbrain.com</string>
-	</array>
 </dict>
 </plist>

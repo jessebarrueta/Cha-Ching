@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import UserNotifications
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 @MainActor
 final class AppStore: ObservableObject {
@@ -62,6 +65,7 @@ final class AppStore: ObservableObject {
         self.ledger = snapshot.ledger
         self.allowanceSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey) ?? snapshot.allowanceSettings
         self.notificationState = .idle
+        publishWidgetSnapshot()
     }
 
     var activeRole: FamilyMemberRole {
@@ -423,6 +427,7 @@ final class AppStore: ObservableObject {
         occurrences[index].submissionId = submission.id
         occurrences[index].status = .aiReviewed
         occurrences[index].updatedAt = Date()
+        publishWidgetSnapshot()
     }
 
     private func submitMockEvidence(for occurrenceId: UUID) {
@@ -443,6 +448,7 @@ final class AppStore: ObservableObject {
         occurrences[index].submissionId = submission.id
         occurrences[index].status = .aiReviewed
         occurrences[index].updatedAt = Date()
+        publishWidgetSnapshot()
     }
 
     func approve(_ occurrence: TaskOccurrence) {
@@ -452,6 +458,7 @@ final class AppStore: ObservableObject {
         }
         decideSubmission(for: occurrence, decision: .approved)
         ledger = AllowanceEngine.voidingDeduction(in: ledger, for: occurrence.id)
+        publishWidgetSnapshot()
     }
 
     func reject(_ occurrence: TaskOccurrence) {
@@ -462,6 +469,7 @@ final class AppStore: ObservableObject {
         }
         decideSubmission(for: occurrence, decision: .rejected)
         addDeductionIfNeeded(for: occurrence, chore: chore)
+        publishWidgetSnapshot()
     }
 
     func excuse(_ occurrence: TaskOccurrence, reason: String? = nil) {
@@ -472,6 +480,7 @@ final class AppStore: ObservableObject {
         }
         decideSubmission(for: occurrence, decision: .excused, note: reason)
         ledger = AllowanceEngine.voidingDeduction(in: ledger, for: occurrence.id)
+        publishWidgetSnapshot()
     }
 
     func requestRetake(_ occurrence: TaskOccurrence) {
@@ -480,6 +489,7 @@ final class AppStore: ObservableObject {
             task.updatedAt = Date()
         }
         decideSubmission(for: occurrence, decision: .retakeRequested, note: "Please send one clearer photo.")
+        publishWidgetSnapshot()
     }
 
     func requestExcuse(_ occurrence: TaskOccurrence) {
@@ -488,6 +498,7 @@ final class AppStore: ObservableObject {
             task.excuseReason = "Child asked for a parent check."
             task.updatedAt = Date()
         }
+        publishWidgetSnapshot()
     }
 
     func markMissed(_ occurrence: TaskOccurrence) {
@@ -497,6 +508,7 @@ final class AppStore: ObservableObject {
             task.updatedAt = Date()
         }
         addDeductionIfNeeded(for: occurrence, chore: chore)
+        publishWidgetSnapshot()
     }
 
     func addBonus(title: String, amountCents: Int, note: String?) {
@@ -508,6 +520,7 @@ final class AppStore: ObservableObject {
                 note: note
             )
         )
+        publishWidgetSnapshot()
     }
 
     func updateAllowanceSettings(
@@ -519,6 +532,7 @@ final class AppStore: ObservableObject {
         allowanceSettings.allowanceWeekday = allowanceWeekday
         allowanceSettings.nextAllowanceDate = Calendar.current.startOfDay(for: nextAllowanceDate)
         saveAllowanceSettings()
+        publishWidgetSnapshot()
 
         Task {
             await refreshNotificationScheduleIfAuthorized()
@@ -649,6 +663,7 @@ final class AppStore: ObservableObject {
         chores[index].deductionCents = deductionCents
         chores[index].dueTime = dueTime
         chores[index].updatedAt = Date()
+        publishWidgetSnapshot()
 
         Task {
             await refreshNotificationScheduleIfAuthorized()
@@ -906,6 +921,13 @@ final class AppStore: ObservableObject {
         return calendar.date(from: dayComponents)
     }
 
+    private static let widgetTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     private static func loadAllowanceSettings(from store: UserDefaults, key: String) -> AllowanceSettings? {
         guard let data = store.data(forKey: key) else {
             return nil
@@ -920,6 +942,31 @@ final class AppStore: ObservableObject {
         }
 
         settingsStore.set(data, forKey: allowanceSettingsKey)
+    }
+
+    private func publishWidgetSnapshot() {
+        let summary = allowanceSummary
+        let nextOccurrence = nextDueOccurrence
+        let nextChore = nextOccurrence.map { chore(for: $0) }
+        let snapshot = ChaChingWidgetSnapshot(
+            updatedAt: Date(),
+            periodTitle: allowancePeriodTitle,
+            childName: childName,
+            currentCents: summary.currentTotalCents,
+            baseCents: summary.weeklyBaseCents,
+            rolloverDebtCents: summary.rolloverDebtCents,
+            choresLeft: remainingCount,
+            nextChoreTitle: nextChore?.shortTitle ?? "All done",
+            nextChoreTime: nextOccurrence.map { Self.widgetTimeFormatter.string(from: $0.dueAt) } ?? "Nice work"
+        )
+
+        guard ChaChingWidgetSharedState.saveSnapshot(snapshot) else {
+            return
+        }
+
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadTimelines(ofKind: ChaChingWidgetSharedState.widgetKind)
+        #endif
     }
 
     private func decideSubmission(for occurrence: TaskOccurrence, decision: ParentDecision.Decision, note: String? = nil) {
