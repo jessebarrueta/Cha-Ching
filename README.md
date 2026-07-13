@@ -33,8 +33,8 @@ Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app 
 - Supabase schema and Edge Function source for `parent_invites`
 - Child dashboard
 - Task detail
-- Mock camera/evidence capture
-- Mock advisory AI review
+- Native camera JPEG evidence capture with a simulator-friendly mock fallback
+- Supabase Storage evidence upload and `review-evidence` AI review call with local fallback while auth is unfinished
 - Parent review queue actions
 - Local chore editing
 - Earnings/ledger overview
@@ -160,7 +160,7 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
 1. Apply `0003_parent_invites.sql`, then deploy `accept-child-invite` and `accept-parent-invite`.
 2. Add Supabase auth bootstrapping and route from `family_members.role`.
 3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
-4. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
-5. Wire the app submission flow to call `review-evidence` after uploading evidence.
+4. Smoke-test auth-backed evidence upload and AI review on a physical phone.
+5. Replace the native camera sheet with a custom camera preview if the MVP needs guided framing controls.
 6. Add WidgetKit targets backed by shared App Group state.
 7. Add local notification scheduling and Universal Links.

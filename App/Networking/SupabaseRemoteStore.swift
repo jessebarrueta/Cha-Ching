@@ -154,6 +154,60 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func uploadEvidenceJPEG(
+        familyId: UUID,
+        occurrenceId: UUID,
+        submissionId: UUID,
+        jpegData: Data
+    ) async throws -> String {
+        let path = "\(familyId.uuidString)/\(occurrenceId.uuidString)/\(submissionId.uuidString).jpg"
+        let response = try await client.storage
+            .from(SupabaseConfig.evidenceBucketName)
+            .upload(
+                path,
+                data: jpegData,
+                options: FileOptions(
+                    cacheControl: "3600",
+                    contentType: "image/jpeg",
+                    upsert: true
+                )
+            )
+
+        return response.path
+    }
+
+    func createChoreSubmission(
+        id: UUID,
+        occurrenceId: UUID,
+        childId: UUID,
+        imagePath: String
+    ) async throws -> ChoreSubmissionRecord {
+        let payload = ChoreSubmissionInsert(
+            id: id,
+            taskOccurrenceId: occurrenceId,
+            childId: childId,
+            imagePath: imagePath
+        )
+
+        return try await client
+            .from("chore_submissions")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func reviewEvidence(submissionId: UUID) async throws -> ReviewEvidenceResponse {
+        try await client.functions.invoke(
+            "review-evidence",
+            options: FunctionInvokeOptions(
+                method: .post,
+                body: ReviewEvidenceRequest(submissionId: submissionId)
+            )
+        )
+    }
+
     private func sha256Hex(_ value: String) -> String {
         SHA256.hash(data: Data(value.utf8))
             .map { String(format: "%02x", $0) }
@@ -247,5 +301,27 @@ private struct ParentInviteInsert: Encodable {
         case createdByParentId = "created_by_parent_id"
         case tokenHash = "token_hash"
         case expiresAt = "expires_at"
+    }
+}
+
+private struct ChoreSubmissionInsert: Encodable {
+    let id: UUID
+    let taskOccurrenceId: UUID
+    let childId: UUID
+    let imagePath: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskOccurrenceId = "task_occurrence_id"
+        case childId = "child_id"
+        case imagePath = "image_path"
+    }
+}
+
+private struct ReviewEvidenceRequest: Encodable {
+    let submissionId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case submissionId = "submission_id"
     }
 }

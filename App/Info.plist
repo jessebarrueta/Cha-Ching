@@ -26,6 +26,8 @@
 	<true/>
 	<key>InviteBaseURL</key>
 	<string>$(APP_INVITE_BASE_URL)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Use the camera to submit chore evidence photos for parent review.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

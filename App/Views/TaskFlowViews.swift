@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct TaskDetailView: View {
     @EnvironmentObject private var store: AppStore
@@ -40,7 +41,7 @@ struct TaskDetailView: View {
                         .cardSurface()
 
                         NavigationLink {
-                            CameraMockView(occurrenceId: occurrence.id)
+                            CameraCaptureView(occurrenceId: occurrence.id)
                         } label: {
                             Label("Take Photo", systemImage: "camera.fill")
                                 .font(.headline)
@@ -162,12 +163,20 @@ struct TaskDetailView: View {
     }
 }
 
-struct CameraMockView: View {
+struct CameraCaptureView: View {
     @EnvironmentObject private var store: AppStore
     var occurrenceId: UUID
 
+    @State private var capturedImage: UIImage?
+    @State private var isShowingCamera = false
+    @State private var isSubmitting = false
+
     private var occurrence: TaskOccurrence? {
         store.occurrences.first { $0.id == occurrenceId }
+    }
+
+    private var cameraAvailable: Bool {
+        UIImagePickerController.isSourceTypeAvailable(.camera)
     }
 
     var body: some View {
@@ -183,15 +192,25 @@ struct CameraMockView: View {
             Color.inkBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                mockPhoto
+                photoSurface
                     .overlay(framingGuides)
+                    .overlay {
+                        if isSubmitting {
+                            ZStack {
+                                Color.black.opacity(0.28)
+                                ProgressView()
+                                    .tint(Color.paperWhite)
+                                    .scaleEffect(1.4)
+                            }
+                        }
+                    }
 
                 VStack(spacing: 20) {
                     HStack {
                         CircleButton(systemImage: "bolt.fill")
                         Spacer()
                         Button {
-                            store.submitEvidence(for: occurrenceId)
+                            captureTapped()
                         } label: {
                             Circle()
                                 .stroke(Color.paperWhite, lineWidth: 4)
@@ -202,6 +221,7 @@ struct CameraMockView: View {
                                         .frame(width: 62, height: 62)
                                 }
                         }
+                        .disabled(isSubmitting)
                         .accessibilityLabel("Capture photo")
                         Spacer()
                         CircleButton(systemImage: "arrow.triangle.2.circlepath.camera.fill")
@@ -229,6 +249,15 @@ struct CameraMockView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(Color.inkBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .fullScreenCover(isPresented: $isShowingCamera) {
+            CameraImagePicker { image in
+                capturedImage = image
+                Task {
+                    await submitCapturedImage(image)
+                }
+            }
+            .ignoresSafeArea()
+        }
     }
 
     private var mockPhoto: some View {
@@ -275,6 +304,42 @@ struct CameraMockView: View {
         .clipped()
     }
 
+    @ViewBuilder
+    private var photoSurface: some View {
+        if let capturedImage {
+            Image(uiImage: capturedImage)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 470)
+                .clipped()
+        } else {
+            mockPhoto
+        }
+    }
+
+    private func captureTapped() {
+        guard !isSubmitting else {
+            return
+        }
+
+        if cameraAvailable {
+            isShowingCamera = true
+        } else {
+            Task {
+                await submitCapturedImage(nil)
+            }
+        }
+    }
+
+    private func submitCapturedImage(_ image: UIImage?) async {
+        isSubmitting = true
+        defer { isSubmitting = false }
+
+        let jpegData = image?.evidenceJPEGData()
+        await store.submitEvidence(for: occurrenceId, jpegData: jpegData)
+    }
+
     private var framingGuides: some View {
         GeometryReader { proxy in
             let guideSize: CGFloat = 44
@@ -305,6 +370,70 @@ struct CameraMockView: View {
                     .position(x: proxy.size.width - 48, y: proxy.size.height - 68)
             }
         }
+    }
+}
+
+struct CameraImagePicker: UIViewControllerRepresentable {
+    var onImagePicked: (UIImage) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraImagePicker
+
+        init(parent: CameraImagePicker) {
+            self.parent = parent
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onImagePicked(image)
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
+private extension UIImage {
+    func evidenceJPEGData(maxDimension: CGFloat = 1600, compressionQuality: CGFloat = 0.82) -> Data? {
+        let longestSide = max(size.width, size.height)
+        let scale = longestSide > maxDimension ? maxDimension / longestSide : 1
+        let targetSize = CGSize(width: size.width * scale, height: size.height * scale)
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let normalizedImage = renderer.image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+            draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        return normalizedImage.jpegData(compressionQuality: compressionQuality)
     }
 }
 

@@ -212,6 +212,51 @@ struct LedgerEntryRecord: Codable, Identifiable, Sendable {
     }
 }
 
+struct ChoreSubmissionRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let taskOccurrenceId: UUID
+    let childId: UUID
+    let imagePath: String
+    let thumbnailPath: String?
+    let submittedAt: Date
+    let aiResult: RemoteAIReviewResult?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case taskOccurrenceId = "task_occurrence_id"
+        case childId = "child_id"
+        case imagePath = "image_path"
+        case thumbnailPath = "thumbnail_path"
+        case submittedAt = "submitted_at"
+        case aiResult = "ai_result"
+        case createdAt = "created_at"
+    }
+}
+
+struct ReviewEvidenceResponse: Decodable, Sendable {
+    let submissionId: UUID
+    let taskOccurrenceId: UUID
+    let aiResult: RemoteAIReviewResult
+
+    enum CodingKeys: String, CodingKey {
+        case submissionId = "submission_id"
+        case taskOccurrenceId = "task_occurrence_id"
+        case aiResult = "ai_result"
+    }
+}
+
+struct RemoteAIReviewResult: Codable, Sendable {
+    let completed: Bool?
+    let confidence: Double
+    let reason: String
+    let retakeSuggested: Bool
+    let retakeInstruction: String?
+    let parentReviewPriority: String?
+    let modelName: String?
+    let reviewedAt: Date
+}
+
 struct RecurrencePayload: Codable, Sendable {
     let type: String
     let times: [String]?

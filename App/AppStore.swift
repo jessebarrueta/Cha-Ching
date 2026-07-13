@@ -350,7 +350,56 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func submitEvidence(for occurrenceId: UUID) {
+    func submitEvidence(for occurrenceId: UUID, jpegData: Data? = nil) async {
+        if let jpegData {
+            do {
+                try await submitRemoteEvidence(for: occurrenceId, jpegData: jpegData)
+                return
+            } catch {
+                debugPrint("Remote evidence submission failed:", error.localizedDescription)
+            }
+        }
+
+        submitMockEvidence(for: occurrenceId)
+    }
+
+    private func submitRemoteEvidence(for occurrenceId: UUID, jpegData: Data) async throws {
+        guard let index = occurrences.firstIndex(where: { $0.id == occurrenceId }) else {
+            return
+        }
+
+        let submissionId = UUID()
+        let occurrence = occurrences[index]
+        let imagePath = try await remoteStore.uploadEvidenceJPEG(
+            familyId: familyId,
+            occurrenceId: occurrenceId,
+            submissionId: submissionId,
+            jpegData: jpegData
+        )
+
+        _ = try await remoteStore.createChoreSubmission(
+            id: submissionId,
+            occurrenceId: occurrenceId,
+            childId: occurrence.childId,
+            imagePath: imagePath
+        )
+
+        let reviewResponse = try await remoteStore.reviewEvidence(submissionId: submissionId)
+        let submission = ChoreSubmission(
+            id: reviewResponse.submissionId,
+            taskOccurrenceId: reviewResponse.taskOccurrenceId,
+            childId: occurrence.childId,
+            imageName: imagePath,
+            aiResult: reviewResponse.aiResult.localResult
+        )
+
+        upsertSubmission(submission)
+        occurrences[index].submissionId = submission.id
+        occurrences[index].status = .aiReviewed
+        occurrences[index].updatedAt = Date()
+    }
+
+    private func submitMockEvidence(for occurrenceId: UUID) {
         guard let index = occurrences.firstIndex(where: { $0.id == occurrenceId }) else {
             return
         }
@@ -364,7 +413,7 @@ final class AppStore: ObservableObject {
             aiResult: result
         )
 
-        submissions.append(submission)
+        upsertSubmission(submission)
         occurrences[index].submissionId = submission.id
         occurrences[index].status = .aiReviewed
         occurrences[index].updatedAt = Date()
@@ -472,6 +521,16 @@ final class AppStore: ObservableObject {
             return
         }
         mutation(&childProfiles[index])
+    }
+
+    private func upsertSubmission(_ submission: ChoreSubmission) {
+        if let index = submissions.firstIndex(where: { $0.id == submission.id }) {
+            submissions[index] = submission
+        } else if let index = submissions.firstIndex(where: { $0.taskOccurrenceId == submission.taskOccurrenceId }) {
+            submissions[index] = submission
+        } else {
+            submissions.append(submission)
+        }
     }
 
     private func applyChildProfileRecord(_ record: ChildProfileRecord) {
@@ -734,6 +793,20 @@ final class AppStore: ObservableObject {
         case .excused:
             return 5
         }
+    }
+}
+
+private extension RemoteAIReviewResult {
+    var localResult: AIReviewResult {
+        AIReviewResult(
+            completed: completed,
+            confidence: confidence,
+            reason: reason,
+            retakeSuggested: retakeSuggested,
+            retakeInstruction: retakeInstruction,
+            modelName: modelName,
+            reviewedAt: reviewedAt
+        )
     }
 }
 
