@@ -41,6 +41,11 @@ Current display name: `ChaChing`
 - Local chore editing
 - Earnings/ledger overview
 - Static lock-screen and home-screen widget previews
+- Addable WidgetKit extension with Home Screen and Lock Screen allowance widgets using seeded summary data
+- Parent allowance schedule controls for weekly or every-two-week cadence
+- Local notification permission flow and scheduling for chore due times plus allowance day
+- Child allowance-day message handoff using Messages or share-sheet fallback
+- Rollover debt calculation when deductions exceed the current allowance period
 
 ## Verified
 
@@ -164,5 +169,8 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
 3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
 4. Smoke-test auth-backed evidence upload and AI review on a physical phone.
 5. Replace the native camera sheet with a custom camera preview if the MVP needs guided framing controls.
-6. Add WidgetKit targets backed by shared App Group state.
-7. Add local notification scheduling and Universal Links.
+6. Replace seeded widget data with shared App Group state from the main app.
+7. Persist allowance settings, notification preferences, and rollover state in Supabase once auth-backed family loading is live.
+8. Add a dedicated child allowance-day celebration screen surfaced from push/local notification and dashboard state.
+9. Add parent-facing allowance-period closeout review before a child message request is sent.
+10. Add Universal Links.

@@ -1,0 +1,242 @@
+import SwiftUI
+import WidgetKit
+
+struct ChaChingAllowanceEntry: TimelineEntry {
+    let date: Date
+    let currentCents: Int
+    let baseCents: Int
+    let choresLeft: Int
+    let nextChoreTitle: String
+    let nextChoreTime: String
+
+    var progress: Double {
+        guard baseCents > 0 else { return 0 }
+        return min(1, Double(currentCents) / Double(baseCents))
+    }
+}
+
+struct ChaChingAllowanceProvider: TimelineProvider {
+    func placeholder(in context: Context) -> ChaChingAllowanceEntry {
+        sampleEntry
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (ChaChingAllowanceEntry) -> Void) {
+        completion(sampleEntry)
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<ChaChingAllowanceEntry>) -> Void) {
+        completion(Timeline(entries: [sampleEntry], policy: .after(Date().addingTimeInterval(30 * 60))))
+    }
+
+    private var sampleEntry: ChaChingAllowanceEntry {
+        ChaChingAllowanceEntry(
+            date: Date(),
+            currentCents: 1_350,
+            baseCents: 1_500,
+            choresLeft: 2,
+            nextChoreTitle: "Take Dog Out",
+            nextChoreTime: "8:00 PM"
+        )
+    }
+}
+
+struct ChaChingAllowanceWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    var entry: ChaChingAllowanceEntry
+
+    var body: some View {
+        switch family {
+        case .systemSmall:
+            smallWidget
+        case .accessoryCircular:
+            accessoryCircular
+        case .accessoryRectangular:
+            accessoryRectangular
+        default:
+            mediumWidget
+        }
+    }
+
+    private var smallWidget: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("This Week")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.ccMuted)
+                Spacer()
+                LimeFace()
+                    .frame(width: 34, height: 36)
+            }
+
+            Text(dollars(entry.currentCents))
+                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.ccInk)
+                .minimumScaleFactor(0.72)
+
+            ProgressBar(value: entry.progress)
+
+            Text("\(entry.choresLeft) chores left")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.ccInk)
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .containerBackground(Color.ccPaper, for: .widget)
+    }
+
+    private var mediumWidget: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("This Week")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.ccMuted)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(dollars(entry.currentCents))
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    Text("/ \(dollars(entry.baseCents))")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Color.ccMuted)
+                }
+                .foregroundStyle(Color.ccInk)
+
+                ProgressBar(value: entry.progress)
+
+                Text("\(entry.choresLeft) chores left")
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(Color.ccInk)
+
+                Label("\(entry.nextChoreTitle) · \(entry.nextChoreTime)", systemImage: "clock")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.ccMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            LimeFace()
+                .frame(width: 72, height: 78)
+        }
+        .padding(18)
+        .containerBackground(Color.ccPaper, for: .widget)
+    }
+
+    private var accessoryCircular: some View {
+        Gauge(value: entry.progress) {
+            Text("Allowance")
+        } currentValueLabel: {
+            Text(dollars(entry.currentCents).replacingOccurrences(of: ".00", with: ""))
+        }
+        .gaugeStyle(.accessoryCircularCapacity)
+    }
+
+    private var accessoryRectangular: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(dollars(entry.currentCents))
+                .font(.headline.weight(.heavy))
+            Text("\(entry.choresLeft) chores left")
+            Text(entry.nextChoreTime)
+        }
+    }
+
+    private func dollars(_ cents: Int) -> String {
+        let value = Double(cents) / 100
+        return value.formatted(.currency(code: "USD"))
+    }
+}
+
+struct ProgressBar: View {
+    var value: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.ccSoft)
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.ccSun, .ccLime],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(10, proxy.size.width * value))
+            }
+        }
+        .frame(height: 10)
+    }
+}
+
+struct LimeFace: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.ccLime)
+                .rotationEffect(.degrees(8))
+
+            VStack(spacing: 5) {
+                HStack(spacing: 12) {
+                    Circle().fill(Color.ccInk).frame(width: 4, height: 4)
+                    Circle().fill(Color.ccInk).frame(width: 4, height: 4)
+                }
+                ArcSmile()
+                    .stroke(Color.ccInk, lineWidth: 2)
+                    .frame(width: 18, height: 8)
+            }
+            .offset(y: 4)
+        }
+    }
+}
+
+struct ArcSmile: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addQuadCurve(
+            to: CGPoint(x: rect.maxX, y: rect.minY),
+            control: CGPoint(x: rect.midX, y: rect.maxY)
+        )
+        return path
+    }
+}
+
+struct ChaChingAllowanceWidget: Widget {
+    let kind = "ChaChingAllowanceWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: ChaChingAllowanceProvider()) { entry in
+            ChaChingAllowanceWidgetView(entry: entry)
+        }
+        .configurationDisplayName("ChaChing Allowance")
+        .description("Check allowance progress and the next chore.")
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
+    }
+}
+
+@main
+struct ChaChingWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        ChaChingAllowanceWidget()
+    }
+}
+
+private extension Color {
+    static let ccInk = Color(hex: "050505")
+    static let ccPaper = Color(hex: "F8F7F2")
+    static let ccMuted = Color(hex: "777770")
+    static let ccSoft = Color(hex: "E9E9E5")
+    static let ccSun = Color(hex: "FFCC00")
+    static let ccLime = Color(hex: "A8E600")
+
+    init(hex: String) {
+        let scanner = Scanner(string: hex)
+        var value: UInt64 = 0
+        scanner.scanHexInt64(&value)
+
+        let red = Double((value >> 16) & 0xFF) / 255
+        let green = Double((value >> 8) & 0xFF) / 255
+        let blue = Double(value & 0xFF) / 255
+
+        self.init(red: red, green: green, blue: blue)
+    }
+}

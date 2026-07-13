@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var isShowingNotificationStatus = false
 
     var body: some View {
         ScrollView {
@@ -12,7 +13,7 @@ struct DashboardView: View {
                     MascotCluster(scale: 0.78)
                         .offset(x: 36, y: -60)
 
-                    AllowanceCard(summary: store.allowanceSummary)
+                    AllowanceCard(summary: store.allowanceSummary, periodTitle: store.allowancePeriodTitle)
                         .padding(.top, 54)
                 }
 
@@ -58,12 +59,22 @@ struct DashboardView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    Task {
+                        await store.enableLocalNotifications()
+                        isShowingNotificationStatus = true
+                    }
                 } label: {
                     Image(systemName: "bell")
                         .font(.headline)
                 }
                 .accessibilityLabel("Notifications")
             }
+        }
+        .alert("Reminders", isPresented: $isShowingNotificationStatus) {
+            Button("OK", role: .cancel) {
+            }
+        } message: {
+            Text(store.notificationState.message)
         }
     }
 

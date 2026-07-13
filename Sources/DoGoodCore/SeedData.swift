@@ -74,6 +74,7 @@ public enum SeedData {
             childName: childName,
             parentName: parentName,
             weeklyAllowanceCents: weeklyAllowanceCents,
+            allowanceSettings: allowanceSettings(now: now),
             members: members(now: now),
             childProfiles: childProfiles(now: now),
             childInvites: [],
@@ -130,6 +131,16 @@ public enum SeedData {
                 updatedAt: now.addingTimeInterval(-7 * 24 * 60 * 60)
             )
         ]
+    }
+
+    private static func allowanceSettings(now: Date) -> AllowanceSettings {
+        AllowanceSettings(
+            familyId: familyId,
+            baseAllowanceCents: weeklyAllowanceCents,
+            cadence: .weekly,
+            allowanceWeekday: .friday,
+            nextAllowanceDate: nextDate(for: .friday, after: now)
+        )
     }
 
     private static func choreDefinitions(now: Date) -> [ChoreDefinition] {
@@ -247,5 +258,13 @@ public enum SeedData {
         dayComponents.hour = timeComponents.hour
         dayComponents.minute = timeComponents.minute
         return calendar.date(from: dayComponents) ?? date
+    }
+
+    private static func nextDate(for weekday: AllowanceWeekday, after date: Date) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: date)
+        let currentWeekday = calendar.component(.weekday, from: today)
+        let daysUntil = (weekday.rawValue - currentWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: daysUntil, to: today) ?? today
     }
 }

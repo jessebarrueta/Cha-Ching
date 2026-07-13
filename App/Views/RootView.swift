@@ -19,6 +19,9 @@ struct RootView: View {
             InviteLandingSheet(invite: invite)
                 .environmentObject(store)
         }
+        .task {
+            await store.refreshNotificationScheduleIfAuthorized()
+        }
     }
 }
 

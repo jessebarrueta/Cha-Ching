@@ -74,7 +74,7 @@ struct HomeScreenWidgetCard: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("This Week")
+                    Text(store.allowancePeriodTitle)
                         .font(.subheadline)
                         .foregroundStyle(Color.mutedGray)
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
@@ -128,4 +128,3 @@ struct HomeScreenWidgetCard: View {
         .accessibilityElement(children: .combine)
     }
 }
-

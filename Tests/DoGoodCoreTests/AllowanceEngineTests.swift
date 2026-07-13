@@ -89,4 +89,42 @@ final class AllowanceEngineTests: XCTestCase {
 
         XCTAssertEqual(AllowanceEngine.summary(for: entries).currentTotalCents, 1_700)
     }
+
+    func testDeductionsBeyondPeriodTotalRollIntoNextPeriod() {
+        let entries = [
+            AllowanceEngine.weeklyBaseEntry(weekId: SeedData.weekId, amountCents: 500),
+            AllowanceEngine.deductionEntry(
+                weekId: SeedData.weekId,
+                occurrenceId: UUID(),
+                choreTitle: "Missed a big task",
+                amountCents: 700
+            )
+        ]
+
+        let summary = AllowanceEngine.summary(for: entries)
+
+        XCTAssertEqual(summary.currentTotalCents, 0)
+        XCTAssertEqual(summary.rolloverDebtCents, 200)
+        XCTAssertEqual(summary.nextPeriodStartingTotalCents, 300)
+    }
+
+    func testEveryTwoWeekAllowanceUsesAnchorDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 3)))
+        let current = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 13)))
+        let settings = AllowanceSettings(
+            familyId: SeedData.familyId,
+            baseAllowanceCents: 1_500,
+            cadence: .everyTwoWeeks,
+            allowanceWeekday: .friday,
+            nextAllowanceDate: anchor
+        )
+
+        let next = settings.nextScheduledAllowanceDate(after: current, calendar: calendar)
+        let components = calendar.dateComponents([.year, .month, .day], from: next)
+
+        XCTAssertEqual(components.year, 2026)
+        XCTAssertEqual(components.month, 7)
+        XCTAssertEqual(components.day, 17)
+    }
 }

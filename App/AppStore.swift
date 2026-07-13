@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppStore: ObservableObject {
@@ -15,9 +16,13 @@ final class AppStore: ObservableObject {
     @Published var occurrences: [TaskOccurrence]
     @Published var submissions: [ChoreSubmission]
     @Published var ledger: [LedgerEntry]
+    @Published var allowanceSettings: AllowanceSettings
+    @Published var notificationState: NotificationState
 
     private let inviteAcceptanceService: InviteAcceptanceServicing
     private let remoteStore: SupabaseRemoteStore
+    private let settingsStore: UserDefaults
+    private let allowanceSettingsKey = "chaching.allowanceSettings"
 
     let familyId: UUID
     let parentId: UUID
@@ -30,7 +35,8 @@ final class AppStore: ObservableObject {
     init(
         snapshot: SeedSnapshot = SeedData.snapshot(),
         inviteAcceptanceService: InviteAcceptanceServicing = SupabaseInviteAcceptanceService(),
-        remoteStore: SupabaseRemoteStore = SupabaseRemoteStore()
+        remoteStore: SupabaseRemoteStore = SupabaseRemoteStore(),
+        settingsStore: UserDefaults = .standard
     ) {
         self.familyId = snapshot.familyId
         self.parentId = snapshot.parentId
@@ -41,6 +47,7 @@ final class AppStore: ObservableObject {
         self.parentName = snapshot.parentName
         self.inviteAcceptanceService = inviteAcceptanceService
         self.remoteStore = remoteStore
+        self.settingsStore = settingsStore
         self.session = AppSession(userId: snapshot.parentId, role: .parent, displayName: snapshot.parentName)
         self.members = snapshot.members
         self.childProfiles = snapshot.childProfiles
@@ -53,6 +60,8 @@ final class AppStore: ObservableObject {
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
         self.ledger = snapshot.ledger
+        self.allowanceSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey) ?? snapshot.allowanceSettings
+        self.notificationState = .idle
     }
 
     var activeRole: FamilyMemberRole {
@@ -77,6 +86,23 @@ final class AppStore: ObservableObject {
 
     var allowanceSummary: AllowanceSummary {
         AllowanceEngine.summary(for: ledger)
+    }
+
+    var allowancePeriodTitle: String {
+        allowanceSettings.cadence.periodTitle
+    }
+
+    var nextAllowanceDate: Date {
+        allowanceSettings.nextScheduledAllowanceDate()
+    }
+
+    var allowanceRequestMessage: String {
+        let amount = Money.dollars(allowanceSummary.currentTotalCents)
+        if allowanceSummary.hasRolloverDebt {
+            return "Hi \(parentName), my \(AppBrand.displayName) allowance closed at $0.00 this period. I will start next period reduced by \(Money.dollars(allowanceSummary.rolloverDebtCents))."
+        }
+
+        return "Hi \(parentName), I finished my \(AppBrand.displayName) chores and earned \(amount). Can you send my allowance when you have a chance?"
     }
 
     var todayOccurrences: [TaskOccurrence] {
@@ -484,6 +510,136 @@ final class AppStore: ObservableObject {
         )
     }
 
+    func updateAllowanceSettings(
+        cadence: AllowanceCadence,
+        allowanceWeekday: AllowanceWeekday,
+        nextAllowanceDate: Date
+    ) {
+        allowanceSettings.cadence = cadence
+        allowanceSettings.allowanceWeekday = allowanceWeekday
+        allowanceSettings.nextAllowanceDate = Calendar.current.startOfDay(for: nextAllowanceDate)
+        saveAllowanceSettings()
+
+        Task {
+            await refreshNotificationScheduleIfAuthorized()
+        }
+    }
+
+    func enableLocalNotifications() async {
+        notificationState = .requesting
+
+        do {
+            let center = UNUserNotificationCenter.current()
+            let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+
+            guard granted else {
+                notificationState = .denied
+                return
+            }
+
+            try await scheduleLocalNotifications()
+            notificationState = .scheduled
+        } catch {
+            notificationState = .failed(error.localizedDescription)
+        }
+    }
+
+    func refreshNotificationScheduleIfAuthorized() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            return
+        }
+
+        do {
+            try await scheduleLocalNotifications()
+            notificationState = .scheduled
+        } catch {
+            notificationState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func scheduleLocalNotifications() async throws {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: localNotificationIdentifiers())
+
+        for chore in chores where !chore.isPaused {
+            guard let dueDate = Self.dateToday(for: chore.dueTime) else {
+                continue
+            }
+
+            for offset in chore.reminderOffsetsMinutes {
+                guard let fireDate = Calendar.current.date(byAdding: .minute, value: -offset, to: dueDate) else {
+                    continue
+                }
+
+                var components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
+                components.second = 0
+
+                let content = UNMutableNotificationContent()
+                content.title = offset > 0 ? "Chore due soon" : "Chore due now"
+                content.body = offset > 0
+                    ? "\(chore.title) is due in \(offset) minutes."
+                    : "\(chore.title) is due now."
+                content.sound = .default
+
+                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                let request = UNNotificationRequest(
+                    identifier: choreNotificationIdentifier(choreId: chore.id, offsetMinutes: offset),
+                    content: content,
+                    trigger: trigger
+                )
+                try await center.add(request)
+            }
+        }
+
+        let allowanceDate = nextAllowanceDate
+        var allowanceComponents: DateComponents
+        if allowanceSettings.cadence == .weekly {
+            allowanceComponents = Calendar.current.dateComponents([.weekday], from: allowanceDate)
+        } else {
+            allowanceComponents = Calendar.current.dateComponents([.year, .month, .day], from: allowanceDate)
+        }
+        allowanceComponents.hour = 9
+        allowanceComponents.minute = 0
+        allowanceComponents.second = 0
+
+        let allowanceContent = UNMutableNotificationContent()
+        allowanceContent.title = "Allowance day"
+        allowanceContent.body = "\(childName)'s \(AppBrand.displayName) total is ready to review."
+        allowanceContent.sound = .default
+
+        let allowanceTrigger = UNCalendarNotificationTrigger(
+            dateMatching: allowanceComponents,
+            repeats: allowanceSettings.cadence == .weekly
+        )
+        let allowanceRequest = UNNotificationRequest(
+            identifier: allowanceNotificationIdentifier,
+            content: allowanceContent,
+            trigger: allowanceTrigger
+        )
+        try await center.add(allowanceRequest)
+    }
+
+    private func localNotificationIdentifiers() -> [String] {
+        var identifiers = chores.flatMap { chore in
+            chore.reminderOffsetsMinutes.map {
+                choreNotificationIdentifier(choreId: chore.id, offsetMinutes: $0)
+            }
+        }
+        identifiers.append(allowanceNotificationIdentifier)
+        return identifiers
+    }
+
+    private var allowanceNotificationIdentifier: String {
+        "chaching.allowance.\(familyId.uuidString)"
+    }
+
+    private func choreNotificationIdentifier(choreId: UUID, offsetMinutes: Int) -> String {
+        "chaching.chore.\(choreId.uuidString).offset.\(offsetMinutes)"
+    }
+
     func updateChore(_ chore: ChoreDefinition, title: String, deductionCents: Int, dueTime: String) {
         guard let index = chores.firstIndex(where: { $0.id == chore.id }) else {
             return
@@ -493,6 +649,10 @@ final class AppStore: ObservableObject {
         chores[index].deductionCents = deductionCents
         chores[index].dueTime = dueTime
         chores[index].updatedAt = Date()
+
+        Task {
+            await refreshNotificationScheduleIfAuthorized()
+        }
     }
 
     private func updateOccurrence(_ id: UUID, mutation: (inout TaskOccurrence) -> Void) {
@@ -731,6 +891,37 @@ final class AppStore: ObservableObject {
         return nil
     }
 
+    private static func dateToday(for time: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        guard let parsedTime = formatter.date(from: time) else {
+            return nil
+        }
+
+        let calendar = Calendar.current
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: parsedTime)
+        var dayComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        dayComponents.hour = timeComponents.hour
+        dayComponents.minute = timeComponents.minute
+        return calendar.date(from: dayComponents)
+    }
+
+    private static func loadAllowanceSettings(from store: UserDefaults, key: String) -> AllowanceSettings? {
+        guard let data = store.data(forKey: key) else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(AllowanceSettings.self, from: data)
+    }
+
+    private func saveAllowanceSettings() {
+        guard let data = try? JSONEncoder().encode(allowanceSettings) else {
+            return
+        }
+
+        settingsStore.set(data, forKey: allowanceSettingsKey)
+    }
+
     private func decideSubmission(for occurrence: TaskOccurrence, decision: ParentDecision.Decision, note: String? = nil) {
         guard let index = submissions.firstIndex(where: { $0.taskOccurrenceId == occurrence.id }) else {
             return
@@ -909,5 +1100,28 @@ enum InviteCreationState: Equatable {
             return true
         }
         return false
+    }
+}
+
+enum NotificationState: Equatable {
+    case idle
+    case requesting
+    case scheduled
+    case denied
+    case failed(String)
+
+    var message: String {
+        switch self {
+        case .idle:
+            return "Reminders are not enabled yet."
+        case .requesting:
+            return "Requesting notification permission..."
+        case .scheduled:
+            return "Chore and allowance reminders are scheduled."
+        case .denied:
+            return "Notifications are off. You can enable them in iOS Settings."
+        case .failed(let message):
+            return message
+        }
     }
 }

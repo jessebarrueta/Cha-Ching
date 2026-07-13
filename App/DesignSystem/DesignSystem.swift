@@ -72,11 +72,12 @@ struct SecondaryActionButton: View {
 
 struct AllowanceCard: View {
     var summary: AllowanceSummary
+    var periodTitle: String = "This Week"
     var compact: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 10 : 14) {
-            Text("This Week")
+            Text(periodTitle)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.paperWhite.opacity(0.8))
 
@@ -92,14 +93,14 @@ struct AllowanceCard: View {
 
             CapsuleProgress(value: summary.progress)
 
-            Text("You started the week with \(Money.dollars(summary.weeklyBaseCents))")
+            Text(summary.hasRolloverDebt ? "Next period starts reduced by \(Money.dollars(summary.rolloverDebtCents))" : "You started this period with \(Money.dollars(summary.weeklyBaseCents))")
                 .font(.caption)
                 .foregroundStyle(Color.paperWhite.opacity(0.75))
         }
         .padding(compact ? 18 : 24)
         .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("This week \(Money.dollars(summary.currentTotalCents)) of \(Money.dollars(summary.weeklyBaseCents)) kept")
+        .accessibilityLabel("\(periodTitle) \(Money.dollars(summary.currentTotalCents)) of \(Money.dollars(summary.weeklyBaseCents)) kept")
     }
 
 }

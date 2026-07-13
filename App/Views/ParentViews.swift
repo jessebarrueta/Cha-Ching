@@ -331,6 +331,9 @@ struct FamilyManagementView: View {
                         )
                 }
 
+                AllowanceSettingsCard()
+                    .environmentObject(store)
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Parents")
                         .font(.title3.weight(.heavy))
@@ -437,6 +440,106 @@ struct FamilyManagementView: View {
                 }
             }
             .padding(22)
+        }
+    }
+}
+
+struct AllowanceSettingsCard: View {
+    @EnvironmentObject private var store: AppStore
+
+    private var cadenceBinding: Binding<AllowanceCadence> {
+        Binding {
+            store.allowanceSettings.cadence
+        } set: { cadence in
+            store.updateAllowanceSettings(
+                cadence: cadence,
+                allowanceWeekday: store.allowanceSettings.allowanceWeekday,
+                nextAllowanceDate: store.allowanceSettings.nextAllowanceDate
+            )
+        }
+    }
+
+    private var weekdayBinding: Binding<AllowanceWeekday> {
+        Binding {
+            store.allowanceSettings.allowanceWeekday
+        } set: { weekday in
+            let updated = store.allowanceSettings.withWeekday(weekday)
+            store.updateAllowanceSettings(
+                cadence: updated.cadence,
+                allowanceWeekday: updated.allowanceWeekday,
+                nextAllowanceDate: updated.nextAllowanceDate
+            )
+        }
+    }
+
+    private var nextDateBinding: Binding<Date> {
+        Binding {
+            store.allowanceSettings.nextAllowanceDate
+        } set: { date in
+            store.updateAllowanceSettings(
+                cadence: store.allowanceSettings.cadence,
+                allowanceWeekday: AllowanceWeekday(rawValue: Calendar.current.component(.weekday, from: date)) ?? store.allowanceSettings.allowanceWeekday,
+                nextAllowanceDate: date
+            )
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Allowance Schedule")
+                .font(.title3.weight(.heavy))
+
+            VStack(spacing: 12) {
+                Picker("Cadence", selection: cadenceBinding) {
+                    ForEach(AllowanceCadence.allCases) { cadence in
+                        Text(cadence.title).tag(cadence)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Picker("Allowance day", selection: weekdayBinding) {
+                    ForEach(AllowanceWeekday.allCases) { weekday in
+                        Text(weekday.title).tag(weekday)
+                    }
+                }
+
+                if store.allowanceSettings.cadence == .everyTwoWeeks {
+                    DatePicker(
+                        "Next payday",
+                        selection: nextDateBinding,
+                        displayedComponents: .date
+                    )
+                }
+
+                HStack {
+                    Label("Next allowance", systemImage: "calendar")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.mutedGray)
+                    Spacer()
+                    Text(store.nextAllowanceDate.formatted(date: .abbreviated, time: .omitted))
+                        .font(.subheadline.weight(.heavy))
+                        .foregroundStyle(Color.inkBlack)
+                }
+
+                PrimaryButton(title: "Schedule Reminders", systemImage: "bell.badge.fill") {
+                    Task {
+                        await store.enableLocalNotifications()
+                    }
+                }
+
+                if store.notificationState != .idle {
+                    Text(store.notificationState.message)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(store.notificationState == .scheduled ? Color.inkBlack : Color.mutedGray)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(16)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.softGray, lineWidth: 1)
+            )
         }
     }
 }

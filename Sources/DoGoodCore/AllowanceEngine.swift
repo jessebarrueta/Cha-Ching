@@ -6,10 +6,19 @@ public struct AllowanceSummary: Equatable {
     public var bonusCents: Int
     public var adjustmentCents: Int
     public var currentTotalCents: Int
+    public var rolloverDebtCents: Int
 
     public var progress: Double {
         guard weeklyBaseCents > 0 else { return 0 }
         return min(1, Double(currentTotalCents) / Double(weeklyBaseCents))
+    }
+
+    public var hasRolloverDebt: Bool {
+        rolloverDebtCents > 0
+    }
+
+    public var nextPeriodStartingTotalCents: Int {
+        max(0, weeklyBaseCents - rolloverDebtCents)
     }
 }
 
@@ -37,12 +46,15 @@ public enum AllowanceEngine {
             .map(\.amountCents)
             .reduce(0, +)
 
+        let rawTotal = base - deductions + bonuses + adjustments
+
         return AllowanceSummary(
             weeklyBaseCents: base,
             activeDeductionCents: deductions,
             bonusCents: bonuses,
             adjustmentCents: adjustments,
-            currentTotalCents: max(0, base - deductions + bonuses + adjustments)
+            currentTotalCents: max(0, rawTotal),
+            rolloverDebtCents: max(0, -rawTotal)
         )
     }
 
@@ -136,4 +148,3 @@ public enum AllowanceEngine {
         )
     }
 }
-

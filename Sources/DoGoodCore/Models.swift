@@ -229,6 +229,128 @@ public enum LedgerEntryType: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+public enum AllowanceCadence: String, Codable, CaseIterable, Identifiable {
+    case weekly
+    case everyTwoWeeks = "every_two_weeks"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .weekly:
+            return "Weekly"
+        case .everyTwoWeeks:
+            return "Every 2 weeks"
+        }
+    }
+
+    public var periodTitle: String {
+        switch self {
+        case .weekly:
+            return "This Week"
+        case .everyTwoWeeks:
+            return "This Pay Period"
+        }
+    }
+
+    public var intervalDays: Int {
+        switch self {
+        case .weekly:
+            return 7
+        case .everyTwoWeeks:
+            return 14
+        }
+    }
+}
+
+public enum AllowanceWeekday: Int, Codable, CaseIterable, Identifiable {
+    case sunday = 1
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+
+    public var id: Int { rawValue }
+
+    public var title: String {
+        switch self {
+        case .sunday:
+            return "Sunday"
+        case .monday:
+            return "Monday"
+        case .tuesday:
+            return "Tuesday"
+        case .wednesday:
+            return "Wednesday"
+        case .thursday:
+            return "Thursday"
+        case .friday:
+            return "Friday"
+        case .saturday:
+            return "Saturday"
+        }
+    }
+}
+
+public struct AllowanceSettings: Codable, Equatable {
+    public var familyId: UUID
+    public var baseAllowanceCents: Int
+    public var cadence: AllowanceCadence
+    public var allowanceWeekday: AllowanceWeekday
+    public var nextAllowanceDate: Date
+
+    public init(
+        familyId: UUID,
+        baseAllowanceCents: Int,
+        cadence: AllowanceCadence = .weekly,
+        allowanceWeekday: AllowanceWeekday = .friday,
+        nextAllowanceDate: Date
+    ) {
+        self.familyId = familyId
+        self.baseAllowanceCents = baseAllowanceCents
+        self.cadence = cadence
+        self.allowanceWeekday = allowanceWeekday
+        self.nextAllowanceDate = nextAllowanceDate
+    }
+
+    public func nextScheduledAllowanceDate(after date: Date = Date(), calendar: Calendar = .current) -> Date {
+        let anchor = calendar.startOfDay(for: nextAllowanceDate)
+        let today = calendar.startOfDay(for: date)
+
+        guard anchor < today else {
+            return anchor
+        }
+
+        let elapsedDays = calendar.dateComponents([.day], from: anchor, to: today).day ?? 0
+        let intervalsElapsed = elapsedDays / cadence.intervalDays
+        let candidate = calendar.date(
+            byAdding: .day,
+            value: intervalsElapsed * cadence.intervalDays,
+            to: anchor
+        ) ?? anchor
+
+        if candidate >= today {
+            return candidate
+        }
+
+        return calendar.date(byAdding: .day, value: cadence.intervalDays, to: candidate) ?? today
+    }
+
+    public func withWeekday(_ weekday: AllowanceWeekday, calendar: Calendar = .current) -> AllowanceSettings {
+        var updated = self
+        updated.allowanceWeekday = weekday
+
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: nextAllowanceDate)
+        components.weekday = weekday.rawValue
+        if let date = calendar.date(from: components) {
+            updated.nextAllowanceDate = date
+        }
+        return updated
+    }
+}
+
 public struct LedgerEntry: Identifiable, Codable, Equatable {
     public var id: UUID
     public var weekId: UUID
@@ -490,6 +612,7 @@ public struct SeedSnapshot {
     public var childName: String
     public var parentName: String
     public var weeklyAllowanceCents: Int
+    public var allowanceSettings: AllowanceSettings
     public var members: [FamilyMember]
     public var childProfiles: [ChildProfile]
     public var childInvites: [ChildInvite]
