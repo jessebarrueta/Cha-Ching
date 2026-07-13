@@ -53,14 +53,38 @@ struct ParentShellView: View {
     var body: some View {
         TabView {
             NavigationStack {
-                ParentWorkspaceView()
+                ParentReviewQueueView()
+                    .navigationTitle("Review")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .parentDebugToolbar()
             }
             .tabItem {
-                Label("Parent", systemImage: "checklist.checked")
+                Label("Review", systemImage: "checklist.checked")
+            }
+
+            NavigationStack {
+                ChoreManagementView()
+                    .navigationTitle("Chores")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .parentDebugToolbar()
+            }
+            .tabItem {
+                Label("Chores", systemImage: "list.bullet.rectangle.fill")
+            }
+
+            NavigationStack {
+                FamilyManagementView()
+                    .navigationTitle("Family")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .parentDebugToolbar()
+            }
+            .tabItem {
+                Label("Family", systemImage: "person.2.fill")
             }
 
             NavigationStack {
                 EarningsView(allowsBonusActions: true)
+                    .parentDebugToolbar()
             }
             .tabItem {
                 Label("Earnings", systemImage: "chart.bar.fill")
@@ -68,6 +92,7 @@ struct ParentShellView: View {
 
             NavigationStack {
                 WidgetPreviewView()
+                    .parentDebugToolbar()
             }
             .tabItem {
                 Label("Widgets", systemImage: "rectangle.grid.2x2.fill")
@@ -92,6 +117,21 @@ struct DevelopmentSessionMenu: View {
             Image(systemName: store.isParentSession ? "person.2.fill" : "face.smiling")
         }
         .accessibilityLabel("Switch preview role")
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func parentDebugToolbar() -> some View {
+        #if DEBUG
+        toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                DevelopmentSessionMenu()
+            }
+        }
+        #else
+        self
+        #endif
     }
 }
 

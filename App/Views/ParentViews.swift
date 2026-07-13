@@ -319,6 +319,18 @@ struct FamilyManagementView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if let syncMessage = store.inviteCreationState.message {
+                    Label(syncMessage, systemImage: store.inviteCreationState.iconName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(store.inviteCreationState.isSynced ? Color.inkBlack : Color.mutedGray)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            (store.inviteCreationState.isSynced ? Color.acidLime : Color.softGray).opacity(0.45),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Parents")
                         .font(.title3.weight(.heavy))
@@ -345,8 +357,11 @@ struct FamilyManagementView: View {
                             .textFieldStyle(.roundedBorder)
 
                         PrimaryButton(title: "Create Parent Invite", systemImage: "person.badge.plus") {
-                            store.createParentInvite(parentName: parentName, phoneNumber: parentPhoneNumber)
+                            Task {
+                                await store.createParentInvite(parentName: parentName, phoneNumber: parentPhoneNumber)
+                            }
                         }
+                        .disabled(store.inviteCreationState.isWorking)
                     }
                     .padding(16)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -393,8 +408,11 @@ struct FamilyManagementView: View {
                             .textFieldStyle(.roundedBorder)
 
                         PrimaryButton(title: "Create Child Invite", systemImage: "link.badge.plus") {
-                            store.createChildInvite(childName: childName, phoneNumber: phoneNumber)
+                            Task {
+                                await store.createChildInvite(childName: childName, phoneNumber: phoneNumber)
+                            }
                         }
+                        .disabled(store.inviteCreationState.isWorking)
                     }
                     .padding(16)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))

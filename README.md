@@ -26,6 +26,7 @@ Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app 
 - Excuse flow that voids deductions
 - Parent bonus flow
 - Parent child-profile and invite-link flow with iOS share sheet handoff
+- Supabase invite creation writes for child and parent links, with local fallback while auth is unfinished
 - Invite acceptance service that requests/verifies SMS OTP and calls the `accept-child-invite` Edge Function
 - Supabase Edge Function source for hashing invite tokens and linking authenticated child users
 - Parent invite flow for a second parent account, with `Daddy` / `Mamma` seed display names
@@ -103,10 +104,9 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
 ## Next Slices
 
 1. Apply `0003_parent_invites.sql`, then deploy `accept-child-invite` and `accept-parent-invite`.
-2. Wire parent/child invite creation to store SHA-256 token hashes in Supabase.
-3. Add Supabase auth bootstrapping and route from `family_members.role`.
-4. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
-5. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
-6. Add WidgetKit targets backed by shared App Group state.
-7. Add local notification scheduling and Universal Links.
-8. Move AI review behind a server-side endpoint with structured JSON output.
+2. Add Supabase auth bootstrapping and route from `family_members.role`.
+3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
+4. Replace mock capture with real camera capture, EXIF stripping, and Storage upload.
+5. Add WidgetKit targets backed by shared App Group state.
+6. Add local notification scheduling and Universal Links.
+7. Move AI review behind a server-side endpoint with structured JSON output.

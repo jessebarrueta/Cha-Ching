@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Supabase
 
 struct SupabaseRemoteStore: Sendable {
@@ -69,5 +70,182 @@ struct SupabaseRemoteStore: Sendable {
             .order("created_at", ascending: false)
             .execute()
             .value
+    }
+
+    func upsertChildProfile(
+        id: UUID,
+        familyId: UUID,
+        displayName: String,
+        phoneNumber: String?,
+        createdByParentId: UUID?
+    ) async throws -> ChildProfileRecord {
+        let payload = ChildProfileUpsert(
+            id: id,
+            familyId: familyId,
+            displayName: displayName,
+            phoneE164: normalizedPhoneNumber(phoneNumber),
+            createdByParentId: createdByParentId
+        )
+
+        return try await client
+            .from("child_profiles")
+            .upsert(payload, onConflict: "id")
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func createChildInvite(
+        id: UUID,
+        familyId: UUID,
+        childProfileId: UUID,
+        childName: String,
+        phoneNumber: String?,
+        createdByParentId: UUID?,
+        token: String,
+        expiresAt: Date
+    ) async throws -> ChildInviteRecord {
+        let payload = ChildInviteInsert(
+            id: id,
+            familyId: familyId,
+            childProfileId: childProfileId,
+            childName: childName,
+            phoneE164: normalizedPhoneNumber(phoneNumber),
+            createdByParentId: createdByParentId,
+            tokenHash: sha256Hex(token),
+            expiresAt: iso8601String(from: expiresAt)
+        )
+
+        return try await client
+            .from("child_invites")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func createParentInvite(
+        id: UUID,
+        familyId: UUID,
+        parentName: String,
+        phoneNumber: String?,
+        createdByParentId: UUID?,
+        token: String,
+        expiresAt: Date
+    ) async throws -> ParentInviteRecord {
+        let payload = ParentInviteInsert(
+            id: id,
+            familyId: familyId,
+            parentName: parentName,
+            phoneE164: normalizedPhoneNumber(phoneNumber),
+            createdByParentId: createdByParentId,
+            tokenHash: sha256Hex(token),
+            expiresAt: iso8601String(from: expiresAt)
+        )
+
+        return try await client
+            .from("parent_invites")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    private func sha256Hex(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func normalizedPhoneNumber(_ rawValue: String?) -> String? {
+        guard let rawValue else {
+            return nil
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        if trimmed.hasPrefix("+") {
+            let digits = trimmed.dropFirst().filter(\.isNumber)
+            return digits.count >= 8 ? "+\(digits)" : nil
+        }
+
+        let digits = trimmed.filter(\.isNumber)
+        if digits.count == 10 {
+            return "+1\(digits)"
+        }
+        if digits.count == 11, digits.first == "1" {
+            return "+\(digits)"
+        }
+        return nil
+    }
+
+    private func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
+}
+
+private struct ChildProfileUpsert: Encodable {
+    let id: UUID
+    let familyId: UUID
+    let displayName: String
+    let phoneE164: String?
+    let createdByParentId: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case displayName = "display_name"
+        case phoneE164 = "phone_e164"
+        case createdByParentId = "created_by_parent_id"
+    }
+}
+
+private struct ChildInviteInsert: Encodable {
+    let id: UUID
+    let familyId: UUID
+    let childProfileId: UUID
+    let childName: String
+    let phoneE164: String?
+    let createdByParentId: UUID?
+    let tokenHash: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case childProfileId = "child_profile_id"
+        case childName = "child_name"
+        case phoneE164 = "phone_e164"
+        case createdByParentId = "created_by_parent_id"
+        case tokenHash = "token_hash"
+        case expiresAt = "expires_at"
+    }
+}
+
+private struct ParentInviteInsert: Encodable {
+    let id: UUID
+    let familyId: UUID
+    let parentName: String
+    let phoneE164: String?
+    let createdByParentId: UUID?
+    let tokenHash: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case parentName = "parent_name"
+        case phoneE164 = "phone_e164"
+        case createdByParentId = "created_by_parent_id"
+        case tokenHash = "token_hash"
+        case expiresAt = "expires_at"
     }
 }

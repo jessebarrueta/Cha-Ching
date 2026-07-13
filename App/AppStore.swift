@@ -10,12 +10,14 @@ final class AppStore: ObservableObject {
     @Published var parentInvites: [ParentInvite]
     @Published var pendingInvite: PendingInvite?
     @Published var inviteAcceptanceState: InviteAcceptanceState
+    @Published var inviteCreationState: InviteCreationState
     @Published var chores: [ChoreDefinition]
     @Published var occurrences: [TaskOccurrence]
     @Published var submissions: [ChoreSubmission]
     @Published var ledger: [LedgerEntry]
 
     private let inviteAcceptanceService: InviteAcceptanceServicing
+    private let remoteStore: SupabaseRemoteStore
 
     let familyId: UUID
     let parentId: UUID
@@ -27,7 +29,8 @@ final class AppStore: ObservableObject {
 
     init(
         snapshot: SeedSnapshot = SeedData.snapshot(),
-        inviteAcceptanceService: InviteAcceptanceServicing = SupabaseInviteAcceptanceService()
+        inviteAcceptanceService: InviteAcceptanceServicing = SupabaseInviteAcceptanceService(),
+        remoteStore: SupabaseRemoteStore = SupabaseRemoteStore()
     ) {
         self.familyId = snapshot.familyId
         self.parentId = snapshot.parentId
@@ -37,6 +40,7 @@ final class AppStore: ObservableObject {
         self.childName = snapshot.childName
         self.parentName = snapshot.parentName
         self.inviteAcceptanceService = inviteAcceptanceService
+        self.remoteStore = remoteStore
         self.session = AppSession(userId: snapshot.parentId, role: .parent, displayName: snapshot.parentName)
         self.members = snapshot.members
         self.childProfiles = snapshot.childProfiles
@@ -44,6 +48,7 @@ final class AppStore: ObservableObject {
         self.parentInvites = snapshot.parentInvites
         self.pendingInvite = nil
         self.inviteAcceptanceState = .idle
+        self.inviteCreationState = .idle
         self.chores = snapshot.chores
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
@@ -189,7 +194,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func createChildInvite(childName: String, phoneNumber: String?) {
+    func createChildInvite(childName: String, phoneNumber: String?) async {
         let trimmedName = childName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             return
@@ -200,6 +205,7 @@ final class AppStore: ObservableObject {
         let childProfileId = upsertChildProfile(named: trimmedName, phoneNumber: usablePhone)
         let token = makeInviteToken(for: trimmedName, prefix: "child")
         let now = Date()
+        let expiresAt = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 24 * 60 * 60)
         let invite = ChildInvite(
             familyId: familyId,
             childProfileId: childProfileId,
@@ -209,13 +215,41 @@ final class AppStore: ObservableObject {
             token: token,
             inviteURL: AppBrand.inviteURL(token: token),
             createdAt: now,
-            expiresAt: Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 24 * 60 * 60)
+            expiresAt: expiresAt
         )
 
+        inviteCreationState = .creating
         childInvites.insert(invite, at: 0)
+
+        do {
+            let profileRecord = try await remoteStore.upsertChildProfile(
+                id: childProfileId,
+                familyId: familyId,
+                displayName: trimmedName,
+                phoneNumber: usablePhone,
+                createdByParentId: nil
+            )
+            applyChildProfileRecord(profileRecord)
+
+            let inviteRecord = try await remoteStore.createChildInvite(
+                id: invite.id,
+                familyId: familyId,
+                childProfileId: childProfileId,
+                childName: trimmedName,
+                phoneNumber: usablePhone,
+                createdByParentId: nil,
+                token: token,
+                expiresAt: expiresAt
+            )
+            applyChildInviteRecord(inviteRecord, token: token)
+            inviteCreationState = .synced("Child invite synced with Supabase.")
+        } catch {
+            inviteCreationState = .localOnly("Invite is ready to share here. Supabase sync needs parent sign-in.")
+            debugPrint("Child invite sync failed:", error.localizedDescription)
+        }
     }
 
-    func createParentInvite(parentName: String, phoneNumber: String?) {
+    func createParentInvite(parentName: String, phoneNumber: String?) async {
         let trimmedName = parentName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             return
@@ -225,6 +259,7 @@ final class AppStore: ObservableObject {
         let usablePhone = normalizedPhone?.isEmpty == false ? normalizedPhone : nil
         let token = makeInviteToken(for: trimmedName, prefix: "parent")
         let now = Date()
+        let expiresAt = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 24 * 60 * 60)
         let invite = ParentInvite(
             familyId: familyId,
             parentName: trimmedName,
@@ -233,10 +268,28 @@ final class AppStore: ObservableObject {
             token: token,
             inviteURL: AppBrand.inviteURL(token: token),
             createdAt: now,
-            expiresAt: Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now.addingTimeInterval(7 * 24 * 60 * 60)
+            expiresAt: expiresAt
         )
 
+        inviteCreationState = .creating
         parentInvites.insert(invite, at: 0)
+
+        do {
+            let inviteRecord = try await remoteStore.createParentInvite(
+                id: invite.id,
+                familyId: familyId,
+                parentName: trimmedName,
+                phoneNumber: usablePhone,
+                createdByParentId: nil,
+                token: token,
+                expiresAt: expiresAt
+            )
+            applyParentInviteRecord(inviteRecord, token: token)
+            inviteCreationState = .synced("Parent invite synced with Supabase.")
+        } catch {
+            inviteCreationState = .localOnly("Invite is ready to share here. Supabase sync needs parent sign-in.")
+            debugPrint("Parent invite sync failed:", error.localizedDescription)
+        }
     }
 
     func revokeInvite(_ invite: ChildInvite) {
@@ -419,6 +472,72 @@ final class AppStore: ObservableObject {
             return
         }
         mutation(&childProfiles[index])
+    }
+
+    private func applyChildProfileRecord(_ record: ChildProfileRecord) {
+        let profile = ChildProfile(
+            id: record.id,
+            familyId: record.familyId,
+            displayName: record.displayName,
+            phoneNumber: record.phoneE164,
+            linkedUserId: record.linkedUserId,
+            createdByParentId: record.createdByParentId ?? parentId,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt
+        )
+
+        if let index = childProfiles.firstIndex(where: { $0.id == record.id }) {
+            childProfiles[index] = profile
+        } else {
+            childProfiles.append(profile)
+        }
+    }
+
+    private func applyChildInviteRecord(_ record: ChildInviteRecord, token: String) {
+        let invite = ChildInvite(
+            id: record.id,
+            familyId: record.familyId,
+            childProfileId: record.childProfileId,
+            childName: record.childName,
+            phoneNumber: record.phoneE164,
+            createdByParentId: record.createdByParentId ?? parentId,
+            token: token,
+            inviteURL: AppBrand.inviteURL(token: token),
+            status: ChildInviteStatus(rawValue: record.status) ?? .pending,
+            createdAt: record.createdAt,
+            expiresAt: record.expiresAt,
+            acceptedAt: record.acceptedAt,
+            acceptedChildUserId: record.acceptedChildUserId
+        )
+
+        if let index = childInvites.firstIndex(where: { $0.id == record.id }) {
+            childInvites[index] = invite
+        } else {
+            childInvites.insert(invite, at: 0)
+        }
+    }
+
+    private func applyParentInviteRecord(_ record: ParentInviteRecord, token: String) {
+        let invite = ParentInvite(
+            id: record.id,
+            familyId: record.familyId,
+            parentName: record.parentName,
+            phoneNumber: record.phoneE164,
+            createdByParentId: record.createdByParentId ?? parentId,
+            token: token,
+            inviteURL: AppBrand.inviteURL(token: token),
+            status: ParentInviteStatus(rawValue: record.status) ?? .pending,
+            createdAt: record.createdAt,
+            expiresAt: record.expiresAt,
+            acceptedAt: record.acceptedAt,
+            acceptedParentUserId: record.acceptedParentUserId
+        )
+
+        if let index = parentInvites.firstIndex(where: { $0.id == record.id }) {
+            parentInvites[index] = invite
+        } else {
+            parentInvites.insert(invite, at: 0)
+        }
     }
 
     private func applyAcceptedChildInvite(_ acceptedInvite: AcceptedChildInvite, token: String) {
@@ -676,5 +795,46 @@ enum InviteAcceptanceState: Equatable {
             return role
         }
         return nil
+    }
+}
+
+enum InviteCreationState: Equatable {
+    case idle
+    case creating
+    case synced(String)
+    case localOnly(String)
+
+    var isWorking: Bool {
+        if case .creating = self {
+            return true
+        }
+        return false
+    }
+
+    var message: String? {
+        switch self {
+        case .idle, .creating:
+            return nil
+        case .synced(let message), .localOnly(let message):
+            return message
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .idle, .creating:
+            return "arrow.triangle.2.circlepath"
+        case .synced:
+            return "checkmark.icloud.fill"
+        case .localOnly:
+            return "icloud.slash.fill"
+        }
+    }
+
+    var isSynced: Bool {
+        if case .synced = self {
+            return true
+        }
+        return false
     }
 }
