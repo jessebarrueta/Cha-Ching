@@ -12,6 +12,8 @@ Configuration/AppBrand.xcconfig
 
 Change `APP_DISPLAY_NAME` there when the final name is decided. The SwiftUI app reads `CFBundleDisplayName` from the bundle, so UI copy should not hard-code the product name.
 
+Current display name: `ChaChing`
+
 ## What Is Built
 
 - SwiftUI iPhone app project: `ChaChing.xcodeproj`

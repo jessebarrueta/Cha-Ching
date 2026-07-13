@@ -1,8 +1,8 @@
 import Foundation
 
 public enum AppBrand {
-    public static let fallbackDisplayName = "Do Good"
-    public static let fallbackInviteBaseURL = URL(string: "https://family-allowance.example/invite")!
+    public static let fallbackDisplayName = "ChaChing"
+    public static let fallbackInviteBaseURL = URL(string: "https://enormousbrain.com/cha-ching/invite")!
 
     public static var displayName: String {
         let bundleName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String

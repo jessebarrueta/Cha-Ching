@@ -6,9 +6,15 @@ These notes are for getting the current ChaChing iOS app onto a few phones with 
 
 GitHub collaborator access only gives access to the source code. TestFlight upload has to happen from a paid Apple Developer Program team.
 
-If the collaborator uses their own paid Apple Developer account, the App Store Connect app and TestFlight build will live under their Apple team for now. That is fine for early testing, but it means the bundle ID, App Store Connect record, and universal-link association may need to change again later if the app moves to Jesse's own Apple Developer account.
+Current plan: publish TestFlight builds under the Art of Sullivan Apple Developer team. The app identity for that team is:
 
-The cleaner long-term path is: Jesse enrolls in Apple Developer Program, creates/owns the app in App Store Connect, and adds the collaborator as a user with enough permissions to upload builds. The faster path is: collaborator owns the temporary TestFlight app under their paid team.
+```text
+Apple Team ID: 2LF847PDLK
+Bundle ID: com.artofsullivan.chaching
+Universal Links appID: 2LF847PDLK.com.artofsullivan.chaching
+```
+
+If the app later moves to a different Apple Developer team, the bundle ID, App Store Connect record, and universal-link association may need to change again.
 
 ## Current project facts
 
@@ -16,12 +22,13 @@ The cleaner long-term path is: Jesse enrolls in Apple Developer Program, creates
 - Project: `ChaChing.xcodeproj`
 - Scheme: `ChaChing`
 - iOS deployment target: `17.0`
-- Display name: controlled in `Configuration/AppBrand.xcconfig` as `APP_DISPLAY_NAME = Do Good`
+- Display name: controlled in `Configuration/AppBrand.xcconfig` as `APP_DISPLAY_NAME = ChaChing`
 - Marketing version: `1.0`
 - Current build number: `2`
-- Current bundle ID: `com.jessebarrueta.ChaChing`
-- Current development team in the project file: `RER3T958QE` (an Apple Team ID, not an Apple account email)
+- Current bundle ID: `com.artofsullivan.chaching`
+- Current development team in the project file: `2LF847PDLK` (the Art of Sullivan Apple Team ID, not an Apple account email)
 - Associated domain entitlement: `applinks:enormousbrain.com`
+- App Store Connect/TestFlight listing name: `ChaChing Allowance`
 
 No OpenAI API key is needed on the Mac that uploads the app. AI review runs through the Supabase Edge Function, and those secrets are already configured server-side.
 
@@ -37,19 +44,19 @@ No OpenAI API key is needed on the Mac that uploads the app. AI review runs thro
    ```
 
 3. Open `ChaChing.xcodeproj` in Xcode.
-4. In Xcode, go to `Xcode > Settings > Accounts` and add the Apple ID that belongs to the paid Developer Program team.
+4. In Xcode, go to `Xcode > Settings > Accounts` and add an Apple ID that belongs to the Art of Sullivan paid Developer Program team.
 5. Select the `ChaChing` project, then the `ChaChing` app target.
-6. In `Signing & Capabilities`, select the paid team.
+6. In `Signing & Capabilities`, select `ART OF SULLIVAN, INC.`.
 7. Leave `Automatically manage signing` enabled unless you have a reason to manage profiles manually.
 
 ## Bundle ID decision
 
 The bundle ID used in Xcode must match the App ID / bundle ID used in App Store Connect.
 
-If the collaborator is uploading under their own paid Apple team, they may need to change the bundle ID to one controlled by that team, for example:
+The chosen bundle ID is:
 
 ```text
-com.<their-org-or-name>.ChaChing
+com.artofsullivan.chaching
 ```
 
 If the bundle ID changes:
@@ -70,7 +77,7 @@ In App Store Connect:
 3. Choose `New App`.
 4. Use:
    - Platform: `iOS`
-   - Name: `Do Good` or `Cha-Ching`, whichever Jesse wants for this test
+   - Name: `ChaChing Allowance`
    - Primary language: `English`
    - Bundle ID: the exact bundle ID selected in Xcode
    - SKU: something stable like `cha-ching-ios`

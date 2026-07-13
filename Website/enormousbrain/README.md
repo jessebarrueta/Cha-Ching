@@ -52,8 +52,8 @@ On GoDaddy, make sure this is uploaded as a file named `apple-app-site-associati
 ## Current App Values
 
 ```text
-Apple Team ID: RER3T958QE
-Bundle ID: com.jessebarrueta.ChaChing
+Apple Team ID: 2LF847PDLK
+Bundle ID: com.artofsullivan.chaching
 Associated domain: applinks:enormousbrain.com
 Invite base URL: https://enormousbrain.com/cha-ching/invite
 ```
