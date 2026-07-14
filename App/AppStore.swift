@@ -21,19 +21,21 @@ final class AppStore: ObservableObject {
     @Published var ledger: [LedgerEntry]
     @Published var allowanceSettings: AllowanceSettings
     @Published var notificationState: NotificationState
+    @Published var familySyncState: FamilySyncState
 
     private let inviteAcceptanceService: InviteAcceptanceServicing
     private let remoteStore: SupabaseRemoteStore
     private let settingsStore: UserDefaults
     private let allowanceSettingsKey = "chaching.allowanceSettings"
+    private var lastAutomaticRemoteRefreshAt: Date?
 
-    let familyId: UUID
-    let parentId: UUID
-    let childId: UUID
-    let weekId: UUID
-    let familyName: String
-    let childName: String
-    let parentName: String
+    @Published private(set) var familyId: UUID
+    @Published private(set) var parentId: UUID
+    @Published private(set) var childId: UUID
+    @Published private(set) var weekId: UUID
+    @Published private(set) var familyName: String
+    @Published private(set) var childName: String
+    @Published private(set) var parentName: String
 
     init(
         snapshot: SeedSnapshot = SeedData.snapshot(),
@@ -63,8 +65,14 @@ final class AppStore: ObservableObject {
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
         self.ledger = snapshot.ledger
-        self.allowanceSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey) ?? snapshot.allowanceSettings
+        if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
+           savedSettings.familyId == snapshot.familyId {
+            self.allowanceSettings = savedSettings
+        } else {
+            self.allowanceSettings = snapshot.allowanceSettings
+        }
         self.notificationState = .idle
+        self.familySyncState = .localPreview
         publishWidgetSnapshot()
     }
 
@@ -151,6 +159,119 @@ final class AppStore: ObservableObject {
             session = AppSession(userId: parentId, role: .parent, displayName: parentName)
         case .child:
             session = AppSession(userId: childId, role: .child, displayName: childName)
+        }
+    }
+
+    var canAttemptRemoteRefresh: Bool {
+        SupabaseClientProvider.shared.auth.currentSession != nil
+    }
+
+    func loadRemoteFamilyStateIfSignedIn(force: Bool = false) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            familySyncState = .localPreview
+            return
+        }
+
+        if !force,
+           let lastAutomaticRemoteRefreshAt,
+           Date().timeIntervalSince(lastAutomaticRemoteRefreshAt) < 20 {
+            return
+        }
+
+        lastAutomaticRemoteRefreshAt = Date()
+
+        await loadRemoteFamilyState()
+    }
+
+    func refreshRemoteFamilyState() async {
+        await loadRemoteFamilyStateIfSignedIn(force: true)
+    }
+
+    func loadRemoteFamilyState() async {
+        familySyncState = .loading
+
+        do {
+            let authSession = try await remoteStore.currentSession()
+            let memberships = try await remoteStore.fetchMembershipsForCurrentUser(userId: authSession.user.id)
+
+            guard let membership = memberships.first else {
+                familySyncState = .needsBootstrap("Signed in. Create your remote family to sync across devices.")
+                return
+            }
+
+            try await applyRemoteFamilyState(for: membership, authUserId: authSession.user.id)
+            familySyncState = .synced("Synced \(familyName) across devices.")
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func requestFamilySyncCode(phoneNumber: String) async {
+        guard let normalizedPhoneNumber = Self.normalizedPhoneNumber(phoneNumber) else {
+            familySyncState = .failed(InviteAcceptanceError.invalidPhoneNumber.localizedDescription)
+            return
+        }
+
+        familySyncState = .loading
+
+        do {
+            try await inviteAcceptanceService.requestSMSCode(phoneNumber: normalizedPhoneNumber)
+            familySyncState = .codeSent(phoneNumber: normalizedPhoneNumber)
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func verifyFamilySyncCode(phoneNumber: String, code: String) async {
+        guard let normalizedPhoneNumber = Self.normalizedPhoneNumber(phoneNumber) else {
+            familySyncState = .failed(InviteAcceptanceError.invalidPhoneNumber.localizedDescription)
+            return
+        }
+
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            familySyncState = .failed(InviteAcceptanceError.invalidCode.localizedDescription)
+            return
+        }
+
+        familySyncState = .loading
+
+        do {
+            _ = try await inviteAcceptanceService.verifySMSCode(
+                phoneNumber: normalizedPhoneNumber,
+                code: trimmedCode
+            )
+            await loadRemoteFamilyState()
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func bootstrapRemoteFamily(parentName: String, childName: String) async {
+        familySyncState = .loading
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.bootstrapPreviewFamily(
+                parentName: parentName,
+                childName: childName,
+                familyName: "\(childName)'s Family"
+            )
+            await loadRemoteFamilyState()
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func signOutRemoteFamily() async {
+        familySyncState = .loading
+
+        do {
+            try await remoteStore.signOut()
+            applyLocalPreviewState()
+            familySyncState = .localPreview
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
         }
     }
 
@@ -459,6 +580,7 @@ final class AppStore: ObservableObject {
         decideSubmission(for: occurrence, decision: .approved)
         ledger = AllowanceEngine.voidingDeduction(in: ledger, for: occurrence.id)
         publishWidgetSnapshot()
+        queueRemoteParentDecision(for: occurrence.id, decision: .approved)
     }
 
     func reject(_ occurrence: TaskOccurrence) {
@@ -470,6 +592,7 @@ final class AppStore: ObservableObject {
         decideSubmission(for: occurrence, decision: .rejected)
         addDeductionIfNeeded(for: occurrence, chore: chore)
         publishWidgetSnapshot()
+        queueRemoteParentDecision(for: occurrence.id, decision: .rejected)
     }
 
     func excuse(_ occurrence: TaskOccurrence, reason: String? = nil) {
@@ -481,15 +604,18 @@ final class AppStore: ObservableObject {
         decideSubmission(for: occurrence, decision: .excused, note: reason)
         ledger = AllowanceEngine.voidingDeduction(in: ledger, for: occurrence.id)
         publishWidgetSnapshot()
+        queueRemoteParentDecision(for: occurrence.id, decision: .excused, note: reason)
     }
 
     func requestRetake(_ occurrence: TaskOccurrence) {
+        let note = "Please send one clearer photo."
         updateOccurrence(occurrence.id) { task in
             task.status = .due
             task.updatedAt = Date()
         }
-        decideSubmission(for: occurrence, decision: .retakeRequested, note: "Please send one clearer photo.")
+        decideSubmission(for: occurrence, decision: .retakeRequested, note: note)
         publishWidgetSnapshot()
+        queueRemoteParentDecision(for: occurrence.id, decision: .retakeRequested, note: note)
     }
 
     func requestExcuse(_ occurrence: TaskOccurrence) {
@@ -668,6 +794,240 @@ final class AppStore: ObservableObject {
         Task {
             await refreshNotificationScheduleIfAuthorized()
         }
+    }
+
+    private func applyLocalPreviewState() {
+        let snapshot = SeedData.snapshot()
+        familyId = snapshot.familyId
+        parentId = snapshot.parentId
+        childId = snapshot.childId
+        weekId = snapshot.weekId
+        familyName = snapshot.familyName
+        childName = snapshot.childName
+        parentName = snapshot.parentName
+        session = AppSession(userId: snapshot.parentId, role: .parent, displayName: snapshot.parentName)
+        members = snapshot.members
+        childProfiles = snapshot.childProfiles
+        childInvites = snapshot.childInvites
+        parentInvites = snapshot.parentInvites
+        pendingInvite = nil
+        inviteAcceptanceState = .idle
+        inviteCreationState = .idle
+        chores = snapshot.chores
+        occurrences = snapshot.occurrences
+        submissions = snapshot.submissions
+        ledger = snapshot.ledger
+
+        if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
+           savedSettings.familyId == snapshot.familyId {
+            allowanceSettings = savedSettings
+        } else {
+            allowanceSettings = snapshot.allowanceSettings
+        }
+
+        publishWidgetSnapshot()
+    }
+
+    private func applyRemoteFamilyState(for membership: FamilyMemberRecord, authUserId: UUID) async throws {
+        let role = FamilyMemberRole(rawValue: membership.role) ?? .parent
+        let familyRecord = try await remoteStore.fetchFamily(id: membership.familyId)
+        let memberRecords = try await remoteStore.fetchFamilyMembers(familyId: membership.familyId)
+        let profileRecords = try await remoteStore.fetchChildProfiles(familyId: membership.familyId)
+
+        guard let selectedChildProfile = selectedRemoteChildProfile(
+            from: profileRecords,
+            role: role,
+            authUserId: authUserId
+        ) else {
+            throw FamilySyncError.missingChildProfile
+        }
+
+        let weekRecords = try await remoteStore.fetchWeeks(
+            familyId: membership.familyId,
+            childId: selectedChildProfile.id
+        )
+
+        guard let weekRecord = weekRecords.first else {
+            throw FamilySyncError.missingCurrentWeek
+        }
+
+        let choreRecords = try await remoteStore.fetchChores(familyId: membership.familyId)
+        let occurrenceRecords = try await remoteStore.fetchOccurrences(weekId: weekRecord.id)
+        let submissionRecords = try await remoteStore.fetchChoreSubmissions(childId: selectedChildProfile.id)
+        let ledgerRecords = try await remoteStore.fetchLedger(weekId: weekRecord.id)
+
+        let remoteOccurrences = occurrenceRecords.map { localOccurrence(from: $0) }
+        let occurrenceIds = Set(remoteOccurrences.map(\.id))
+        let remoteSubmissions = submissionRecords
+            .filter { occurrenceIds.contains($0.taskOccurrenceId) }
+            .map { localSubmission(from: $0) }
+
+        familyId = familyRecord.id
+        childId = selectedChildProfile.id
+        weekId = weekRecord.id
+        familyName = familyRecord.name
+        childName = selectedChildProfile.displayName
+
+        let parentMember = memberRecords.first { $0.role == FamilyMemberRole.parent.rawValue }
+        parentId = parentMember?.userId ?? (role == .parent ? authUserId : parentId)
+        parentName = parentMember?.displayName ?? (role == .parent ? membership.displayName : parentName)
+        session = AppSession(userId: authUserId, role: role, displayName: membership.displayName)
+
+        members = memberRecords.map { localFamilyMember(from: $0) }
+        childProfiles = profileRecords.map { localChildProfile(from: $0) }
+        childInvites = []
+        parentInvites = []
+        chores = choreRecords
+            .filter { $0.childId == selectedChildProfile.id }
+            .map { localChoreDefinition(from: $0) }
+        occurrences = remoteOccurrences
+        submissions = remoteSubmissions
+        ledger = ledgerRecords.map { localLedgerEntry(from: $0) }
+
+        if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
+           savedSettings.familyId == familyRecord.id {
+            allowanceSettings = savedSettings
+        } else {
+            allowanceSettings = AllowanceSettings(
+                familyId: familyRecord.id,
+                baseAllowanceCents: familyRecord.weeklyBaseAllowanceCents,
+                cadence: .weekly,
+                allowanceWeekday: .friday,
+                nextAllowanceDate: Self.nextAllowanceDate(for: .friday)
+            )
+            saveAllowanceSettings()
+        }
+
+        publishWidgetSnapshot()
+        await refreshNotificationScheduleIfAuthorized()
+    }
+
+    private func selectedRemoteChildProfile(
+        from profiles: [ChildProfileRecord],
+        role: FamilyMemberRole,
+        authUserId: UUID
+    ) -> ChildProfileRecord? {
+        switch role {
+        case .parent:
+            return profiles.sorted { $0.createdAt < $1.createdAt }.first
+        case .child:
+            return profiles.first { $0.linkedUserId == authUserId }
+                ?? profiles.sorted { $0.createdAt < $1.createdAt }.first
+        }
+    }
+
+    private func localFamilyMember(from record: FamilyMemberRecord) -> FamilyMember {
+        FamilyMember(
+            familyId: record.familyId,
+            userId: record.userId,
+            role: FamilyMemberRole(rawValue: record.role) ?? .parent,
+            displayName: record.displayName,
+            createdAt: record.createdAt
+        )
+    }
+
+    private func localChildProfile(from record: ChildProfileRecord) -> ChildProfile {
+        ChildProfile(
+            id: record.id,
+            familyId: record.familyId,
+            displayName: record.displayName,
+            phoneNumber: record.phoneE164,
+            linkedUserId: record.linkedUserId,
+            createdByParentId: record.createdByParentId ?? parentId,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt
+        )
+    }
+
+    private func localChoreDefinition(from record: ChoreDefinitionRecord) -> ChoreDefinition {
+        ChoreDefinition(
+            id: record.id,
+            familyId: record.familyId,
+            childId: record.childId,
+            title: record.title,
+            shortTitle: record.shortTitle,
+            description: record.description ?? "",
+            instructions: record.instructions ?? "",
+            expectedEvidence: record.expectedEvidence ?? "A clear photo showing the completed chore.",
+            deductionCents: record.deductionCents,
+            verificationMode: VerificationMode(rawValue: record.verificationMode) ?? .photoRequired,
+            dueTime: record.recurrence.times?.first ?? "8:00 PM",
+            dueWindowMinutes: record.dueWindowMinutes,
+            reminderOffsetsMinutes: record.reminderOffsetsMinutes,
+            isPaused: record.isPaused,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt
+        )
+    }
+
+    private func localOccurrence(from record: TaskOccurrenceRecord) -> TaskOccurrence {
+        TaskOccurrence(
+            id: record.id,
+            choreDefinitionId: record.choreDefinitionId,
+            childId: record.childId,
+            weekId: record.weekId,
+            scheduledAt: record.scheduledAt,
+            dueAt: record.dueAt,
+            expiresAt: record.expiresAt,
+            status: TaskOccurrenceStatus(rawValue: record.status) ?? .upcoming,
+            submissionId: record.submissionId,
+            deductionLedgerEntryId: record.deductionLedgerEntryId,
+            excuseReason: record.excuseReason,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt
+        )
+    }
+
+    private func localSubmission(from record: ChoreSubmissionRecord) -> ChoreSubmission {
+        ChoreSubmission(
+            id: record.id,
+            taskOccurrenceId: record.taskOccurrenceId,
+            childId: record.childId,
+            imageName: record.imagePath,
+            submittedAt: record.submittedAt,
+            aiResult: record.aiResult.map { localAIReviewResult(from: $0) },
+            parentDecision: record.parentDecision.flatMap { localParentDecision(from: $0) }
+        )
+    }
+
+    private func localAIReviewResult(from record: RemoteAIReviewResult) -> AIReviewResult {
+        AIReviewResult(
+            completed: record.completed,
+            confidence: record.confidence,
+            reason: record.reason,
+            retakeSuggested: record.retakeSuggested,
+            retakeInstruction: record.retakeInstruction,
+            modelName: record.modelName,
+            reviewedAt: record.reviewedAt
+        )
+    }
+
+    private func localParentDecision(from record: RemoteParentDecision) -> ParentDecision? {
+        guard let decision = ParentDecision.Decision(rawValue: record.decision),
+              let parentId = record.parentId else {
+            return nil
+        }
+
+        return ParentDecision(
+            decision: decision,
+            note: record.note,
+            decidedAt: record.decidedAt ?? Date(),
+            parentId: parentId
+        )
+    }
+
+    private func localLedgerEntry(from record: LedgerEntryRecord) -> LedgerEntry {
+        LedgerEntry(
+            id: record.id,
+            weekId: record.weekId,
+            type: LedgerEntryType(rawValue: record.entryType) ?? .adjustment,
+            title: record.title,
+            amountCents: record.amountCents,
+            relatedOccurrenceId: record.relatedOccurrenceId,
+            note: record.note,
+            isVoided: record.isVoided,
+            createdAt: record.createdAt
+        )
     }
 
     private func updateOccurrence(_ id: UUID, mutation: (inout TaskOccurrence) -> Void) {
@@ -921,6 +1281,14 @@ final class AppStore: ObservableObject {
         return calendar.date(from: dayComponents)
     }
 
+    private static func nextAllowanceDate(for weekday: AllowanceWeekday, after date: Date = Date()) -> Date {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: date)
+        let currentWeekday = calendar.component(.weekday, from: today)
+        let daysUntil = (weekday.rawValue - currentWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: daysUntil, to: today) ?? today
+    }
+
     private static let widgetTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
@@ -979,6 +1347,38 @@ final class AppStore: ObservableObject {
             note: note,
             parentId: parentId
         )
+    }
+
+    private func queueRemoteParentDecision(
+        for occurrenceId: UUID,
+        decision: ParentDecision.Decision,
+        note: String? = nil
+    ) {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        Task {
+            await syncRemoteParentDecision(for: occurrenceId, decision: decision, note: note)
+        }
+    }
+
+    private func syncRemoteParentDecision(
+        for occurrenceId: UUID,
+        decision: ParentDecision.Decision,
+        note: String?
+    ) async {
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.decideSubmission(
+                occurrenceId: occurrenceId,
+                decision: decision,
+                note: note
+            )
+            await loadRemoteFamilyState()
+        } catch {
+            familySyncState = .failed("Review saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
     }
 
     private func addDeductionIfNeeded(for occurrence: TaskOccurrence, chore: ChoreDefinition) {
@@ -1169,6 +1569,91 @@ enum NotificationState: Equatable {
             return "Notifications are off. You can enable them in iOS Settings."
         case .failed(let message):
             return message
+        }
+    }
+}
+
+enum FamilySyncState: Equatable {
+    case localPreview
+    case loading
+    case codeSent(phoneNumber: String)
+    case needsBootstrap(String)
+    case synced(String)
+    case failed(String)
+
+    var message: String {
+        switch self {
+        case .localPreview:
+            return "Using preview data on this phone. Sign in to sync this family across devices."
+        case .loading:
+            return "Working on family sync..."
+        case .codeSent(let phoneNumber):
+            return "Code sent to \(phoneNumber)."
+        case .needsBootstrap(let message):
+            return message
+        case .synced(let message):
+            return message
+        case .failed(let message):
+            return message
+        }
+    }
+
+    var isWorking: Bool {
+        if case .loading = self {
+            return true
+        }
+        return false
+    }
+
+    var isSynced: Bool {
+        if case .synced = self {
+            return true
+        }
+        return false
+    }
+
+    var needsBootstrap: Bool {
+        if case .needsBootstrap = self {
+            return true
+        }
+        return false
+    }
+
+    var codePhoneNumber: String? {
+        if case .codeSent(let phoneNumber) = self {
+            return phoneNumber
+        }
+        return nil
+    }
+
+    var iconName: String {
+        switch self {
+        case .localPreview:
+            return "iphone"
+        case .loading:
+            return "arrow.triangle.2.circlepath"
+        case .codeSent:
+            return "message.badge"
+        case .needsBootstrap:
+            return "icloud.and.arrow.up"
+        case .synced:
+            return "checkmark.icloud.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+enum FamilySyncError: LocalizedError {
+    case missingChildProfile
+    case missingCurrentWeek
+
+    var errorDescription: String? {
+        switch self {
+        case .missingChildProfile:
+            return "This family does not have a child profile yet."
+        case .missingCurrentWeek:
+            return "This child does not have a current allowance week yet."
         }
     }
 }

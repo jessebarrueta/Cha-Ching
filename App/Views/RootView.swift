@@ -20,6 +20,7 @@ struct RootView: View {
                 .environmentObject(store)
         }
         .task {
+            await store.loadRemoteFamilyStateIfSignedIn(force: true)
             await store.refreshNotificationScheduleIfAuthorized()
         }
     }
@@ -131,10 +132,36 @@ private extension View {
             ToolbarItem(placement: .topBarLeading) {
                 DevelopmentSessionMenu()
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                RemoteRefreshButton()
+            }
         }
         #else
-        self
+        toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                RemoteRefreshButton()
+            }
+        }
         #endif
+    }
+}
+
+struct RemoteRefreshButton: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        if store.canAttemptRemoteRefresh {
+            Button {
+                Task {
+                    await store.refreshRemoteFamilyState()
+                }
+            } label: {
+                Image(systemName: store.familySyncState.isWorking ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                    .font(.headline)
+            }
+            .disabled(store.familySyncState.isWorking)
+            .accessibilityLabel("Refresh family state")
+        }
     }
 }
 

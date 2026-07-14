@@ -95,6 +95,9 @@ struct ParentReviewQueueView: View {
             }
             .padding(22)
         }
+        .refreshable {
+            await store.refreshRemoteFamilyState()
+        }
     }
 }
 
@@ -319,6 +322,9 @@ struct FamilyManagementView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                FamilySyncCard()
+                    .environmentObject(store)
+
                 if let syncMessage = store.inviteCreationState.message {
                     Label(syncMessage, systemImage: store.inviteCreationState.iconName)
                         .font(.caption.weight(.semibold))
@@ -441,6 +447,147 @@ struct FamilyManagementView: View {
             }
             .padding(22)
         }
+    }
+}
+
+struct FamilySyncCard: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var phoneNumber = ""
+    @State private var smsCode = ""
+    @State private var bootstrapParentName = "Daddy"
+    @State private var bootstrapChildName = "Zoe"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Family Sync", systemImage: store.familySyncState.iconName)
+                    .font(.title3.weight(.heavy))
+                Spacer()
+                if store.familySyncState.isSynced {
+                    Text("Live")
+                        .font(.caption2.weight(.heavy))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .foregroundStyle(Color.inkBlack)
+                        .background(Color.acidLime.opacity(0.65), in: Capsule())
+                }
+            }
+
+            Text(store.familySyncState.message)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(store.familySyncState.isSynced ? Color.inkBlack : Color.mutedGray)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(spacing: 12) {
+                TextField("Phone number", text: $phoneNumber)
+                    .textContentType(.telephoneNumber)
+                    .keyboardType(.phonePad)
+                    .font(.body.weight(.semibold))
+                    .textFieldStyle(.roundedBorder)
+
+                if store.familySyncState.codePhoneNumber != nil {
+                    TextField("Text code", text: $smsCode)
+                        .textContentType(.oneTimeCode)
+                        .keyboardType(.numberPad)
+                        .font(.body.weight(.semibold))
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await store.requestFamilySyncCode(phoneNumber: phoneNumber)
+                        }
+                    } label: {
+                        Label("Send Code", systemImage: "message.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.sunYellow.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        Task {
+                            await store.verifyFamilySyncCode(
+                                phoneNumber: store.familySyncState.codePhoneNumber ?? phoneNumber,
+                                code: smsCode
+                            )
+                        }
+                    } label: {
+                        Label("Verify", systemImage: "checkmark.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .foregroundStyle(Color.paperWhite)
+                            .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.familySyncState.codePhoneNumber == nil)
+                }
+
+                if store.familySyncState.needsBootstrap {
+                    TextField("Parent display name", text: $bootstrapParentName)
+                        .textContentType(.givenName)
+                        .font(.body.weight(.semibold))
+                        .textFieldStyle(.roundedBorder)
+
+                    TextField("Child display name", text: $bootstrapChildName)
+                        .textContentType(.givenName)
+                        .font(.body.weight(.semibold))
+                        .textFieldStyle(.roundedBorder)
+
+                    PrimaryButton(title: "Create Remote Family", systemImage: "icloud.and.arrow.up.fill") {
+                        Task {
+                            await store.bootstrapRemoteFamily(
+                                parentName: bootstrapParentName,
+                                childName: bootstrapChildName
+                            )
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await store.loadRemoteFamilyState()
+                        }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                            .foregroundStyle(Color.inkBlack)
+                            .background(Color.softGray.opacity(0.85), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    if store.familySyncState.isSynced {
+                        Button {
+                            Task {
+                                await store.signOutRemoteFamily()
+                            }
+                        } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 46)
+                                .foregroundStyle(Color.inkBlack)
+                                .background(Color.softGray.opacity(0.85), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .disabled(store.familySyncState.isWorking)
+        }
+        .padding(16)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(store.familySyncState.isSynced ? Color.acidLime : Color.softGray, lineWidth: 1.5)
+        )
     }
 }
 

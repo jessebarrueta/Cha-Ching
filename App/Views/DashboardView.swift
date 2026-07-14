@@ -48,6 +48,9 @@ struct DashboardView: View {
             .padding(22)
         }
         .background(Color.paperWhite.ignoresSafeArea())
+        .refreshable {
+            await store.refreshRemoteFamilyState()
+        }
         .navigationTitle(AppBrand.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -57,7 +60,9 @@ struct DashboardView: View {
             }
             #endif
 
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                RemoteRefreshButton()
+
                 Button {
                     Task {
                         await store.enableLocalNotifications()

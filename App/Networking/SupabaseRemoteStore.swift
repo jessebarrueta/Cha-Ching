@@ -5,10 +5,40 @@ import Supabase
 struct SupabaseRemoteStore: Sendable {
     var client: SupabaseClient = SupabaseClientProvider.shared
 
+    func currentSession() async throws -> Session {
+        let session = try await client.auth.session
+        client.functions.setAuth(token: session.accessToken)
+        return session
+    }
+
+    func signOut() async throws {
+        try await client.auth.signOut()
+    }
+
+    func fetchMembershipsForCurrentUser(userId: UUID) async throws -> [FamilyMemberRecord] {
+        try await client
+            .from("family_members")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .order("created_at", ascending: false)
+            .execute()
+            .value
+    }
+
     func fetchFamilies() async throws -> [FamilyRecord] {
         try await client
             .from("families")
             .select()
+            .execute()
+            .value
+    }
+
+    func fetchFamily(id: UUID) async throws -> FamilyRecord {
+        try await client
+            .from("families")
+            .select()
+            .eq("id", value: id.uuidString)
+            .single()
             .execute()
             .value
     }
@@ -52,12 +82,43 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func fetchWeeks(familyId: UUID, childId: UUID) async throws -> [WeekRecord] {
+        try await client
+            .from("weeks")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .eq("child_id", value: childId.uuidString)
+            .order("starts_at", ascending: false)
+            .execute()
+            .value
+    }
+
     func fetchChores(familyId: UUID) async throws -> [ChoreDefinitionRecord] {
         try await client
             .from("chore_definitions")
             .select()
             .eq("family_id", value: familyId.uuidString)
             .order("title")
+            .execute()
+            .value
+    }
+
+    func fetchOccurrences(weekId: UUID) async throws -> [TaskOccurrenceRecord] {
+        try await client
+            .from("task_occurrences")
+            .select()
+            .eq("week_id", value: weekId.uuidString)
+            .order("due_at")
+            .execute()
+            .value
+    }
+
+    func fetchChoreSubmissions(childId: UUID) async throws -> [ChoreSubmissionRecord] {
+        try await client
+            .from("chore_submissions")
+            .select()
+            .eq("child_id", value: childId.uuidString)
+            .order("submitted_at", ascending: false)
             .execute()
             .value
     }
@@ -70,6 +131,30 @@ struct SupabaseRemoteStore: Sendable {
             .order("created_at", ascending: false)
             .execute()
             .value
+    }
+
+    func bootstrapPreviewFamily(
+        parentName: String,
+        childName: String,
+        familyName: String?
+    ) async throws -> BootstrapFamilyResponse {
+        let responses: [BootstrapFamilyResponse] = try await client
+            .rpc(
+                "bootstrap_preview_family",
+                params: BootstrapFamilyParams(
+                    parentDisplayName: parentName,
+                    childDisplayName: childName,
+                    familyDisplayName: familyName
+                )
+            )
+            .execute()
+            .value
+
+        guard let response = responses.first else {
+            throw SupabaseRemoteStoreError.emptyBootstrapResponse
+        }
+
+        return response
     }
 
     func upsertChildProfile(
@@ -208,6 +293,30 @@ struct SupabaseRemoteStore: Sendable {
         )
     }
 
+    func decideSubmission(
+        occurrenceId: UUID,
+        decision: ParentDecision.Decision,
+        note: String?
+    ) async throws -> ParentReviewDecisionResponse {
+        let responses: [ParentReviewDecisionResponse] = try await client
+            .rpc(
+                "decide_chore_submission",
+                params: ParentReviewDecisionParams(
+                    targetOccurrenceId: occurrenceId,
+                    targetDecision: decision.rawValue,
+                    targetNote: note
+                )
+            )
+            .execute()
+            .value
+
+        guard let response = responses.first else {
+            throw SupabaseRemoteStoreError.emptyParentReviewDecisionResponse
+        }
+
+        return response
+    }
+
     private func sha256Hex(_ value: String) -> String {
         SHA256.hash(data: Data(value.utf8))
             .map { String(format: "%02x", $0) }
@@ -243,6 +352,32 @@ struct SupabaseRemoteStore: Sendable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+}
+
+enum SupabaseRemoteStoreError: LocalizedError {
+    case emptyBootstrapResponse
+    case emptyParentReviewDecisionResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyBootstrapResponse:
+            return "Supabase did not return a family after bootstrapping."
+        case .emptyParentReviewDecisionResponse:
+            return "Supabase did not return the reviewed task."
+        }
+    }
+}
+
+private struct BootstrapFamilyParams: Encodable {
+    let parentDisplayName: String
+    let childDisplayName: String
+    let familyDisplayName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case parentDisplayName = "parent_display_name"
+        case childDisplayName = "child_display_name"
+        case familyDisplayName = "family_display_name"
     }
 }
 
@@ -323,5 +458,17 @@ private struct ReviewEvidenceRequest: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case submissionId = "submission_id"
+    }
+}
+
+private struct ParentReviewDecisionParams: Encodable {
+    let targetOccurrenceId: UUID
+    let targetDecision: String
+    let targetNote: String?
+
+    enum CodingKeys: String, CodingKey {
+        case targetOccurrenceId = "target_occurrence_id"
+        case targetDecision = "target_decision"
+        case targetNote = "target_note"
     }
 }

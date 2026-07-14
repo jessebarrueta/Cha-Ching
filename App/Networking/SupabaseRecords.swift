@@ -34,6 +34,30 @@ struct FamilyMemberRecord: Codable, Identifiable, Sendable {
     }
 }
 
+struct WeekRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let familyId: UUID
+    let childId: UUID
+    let startsAt: Date
+    let endsAt: Date
+    let baseAllowanceCents: Int
+    let archivedAt: Date?
+    let finalBalanceCents: Int?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case childId = "child_id"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case baseAllowanceCents = "base_allowance_cents"
+        case archivedAt = "archived_at"
+        case finalBalanceCents = "final_balance_cents"
+        case createdAt = "created_at"
+    }
+}
+
 struct ChildProfileRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let familyId: UUID
@@ -220,6 +244,7 @@ struct ChoreSubmissionRecord: Codable, Identifiable, Sendable {
     let thumbnailPath: String?
     let submittedAt: Date
     let aiResult: RemoteAIReviewResult?
+    let parentDecision: RemoteParentDecision?
     let createdAt: Date
 
     enum CodingKeys: String, CodingKey {
@@ -230,6 +255,7 @@ struct ChoreSubmissionRecord: Codable, Identifiable, Sendable {
         case thumbnailPath = "thumbnail_path"
         case submittedAt = "submitted_at"
         case aiResult = "ai_result"
+        case parentDecision = "parent_decision"
         case createdAt = "created_at"
     }
 }
@@ -257,6 +283,20 @@ struct RemoteAIReviewResult: Codable, Sendable {
     let reviewedAt: Date
 }
 
+struct RemoteParentDecision: Codable, Sendable {
+    let decision: String
+    let note: String?
+    let decidedAt: Date?
+    let parentId: UUID?
+
+    enum CodingKeys: String, CodingKey {
+        case decision
+        case note
+        case decidedAt = "decided_at"
+        case parentId = "parent_id"
+    }
+}
+
 struct RecurrencePayload: Codable, Sendable {
     let type: String
     let times: [String]?
@@ -270,5 +310,33 @@ struct RecurrencePayload: Codable, Sendable {
         case weekdays
         case rule
         case dueAt = "due_at"
+    }
+}
+
+struct BootstrapFamilyResponse: Decodable, Sendable {
+    let familyId: UUID
+    let childProfileId: UUID
+    let weekId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case familyId = "family_id"
+        case childProfileId = "child_profile_id"
+        case weekId = "week_id"
+    }
+}
+
+struct ParentReviewDecisionResponse: Decodable, Sendable {
+    let occurrenceId: UUID
+    let submissionId: UUID?
+    let ledgerEntryId: UUID?
+    let decision: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case occurrenceId = "occurrence_id"
+        case submissionId = "submission_id"
+        case ledgerEntryId = "ledger_entry_id"
+        case decision
+        case status
     }
 }

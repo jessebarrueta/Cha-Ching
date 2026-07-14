@@ -20,7 +20,7 @@ Current display name: `ChaChing`
 - Foundation-only core package for deterministic allowance logic
 - Supabase Swift package linked through the Xcode project
 - Supabase client configuration using the publishable project key
-- Initial Supabase SQL migrations for families, child profiles, child invites, chores, occurrences, submissions, ledger entries, RLS, and private evidence storage
+- Initial Supabase SQL migrations for families, child profiles, child/parent invites, remote family bootstrapping, chores, occurrences, submissions, ledger entries, RLS, and private evidence storage
 - Seed family state for Daddy/Zoe with `$15.00` base allowance and `$13.50` current total
 - Role-aware parent and child app shells
 - Ledger-driven allowance summary
@@ -37,6 +37,10 @@ Current display name: `ChaChing`
 - Task detail
 - Native camera JPEG evidence capture with a simulator-friendly mock fallback
 - Supabase Storage evidence upload and `review-evidence` AI review call with local fallback while auth is unfinished
+- Parent Family Sync card for phone OTP sign-in, remote family bootstrap, Supabase-backed family loading, and sign-out
+- Supabase-backed role routing from `family_members.role`
+- Supabase parent review decision RPC and app wiring for approve, reject, excuse, and retake actions
+- Remote family refresh on app foreground, toolbar refresh, and pull-to-refresh for parent/child state
 - Parent review queue actions
 - Local chore editing
 - Earnings/ledger overview
@@ -46,6 +50,22 @@ Current display name: `ChaChing`
 - Local notification permission flow and scheduling for chore due times plus allowance day
 - Child allowance-day message handoff using Messages or share-sheet fallback
 - Rollover debt calculation when deductions exceed the current allowance period
+
+## Privacy and Evidence Direction
+
+The current app can capture and upload chore evidence photos, but the planned product direction is privacy-first and parent-configurable:
+
+- Photo evidence can be disabled for a family and configured per chore.
+- Chores can be `photo_required`, `photo_optional`, `parent_only`, or `no_verification`.
+- People/face blocking should run on-device before upload; blocked images never leave the phone.
+- Evidence photos should be temporary. MVP default: delete after parent review plus a short undo grace window, with a post-allowance-period cleanup backstop.
+- Keep task decisions, allowance history, and lightweight AI/review metadata; do not keep original images or thumbnails after evidence deletion.
+
+See:
+
+```text
+docs/privacy-and-evidence-roadmap.md
+```
 
 ## Widget State
 
@@ -117,7 +137,13 @@ The schema lives in:
 supabase/migrations/0001_initial_schema.sql
 supabase/migrations/0002_child_profiles_and_invites.sql
 supabase/migrations/0003_parent_invites.sql
+supabase/migrations/0004_family_bootstrap.sql
+supabase/migrations/0005_parent_review_decisions.sql
 ```
+
+`0004_family_bootstrap.sql` adds the `bootstrap_preview_family` RPC used by the parent Family Sync card. A signed-in parent can create the initial remote family, child profile, current week, starting allowance ledger entry, and preview chore schedule from the app.
+
+`0005_parent_review_decisions.sql` adds the `decide_chore_submission` RPC used by parent review actions. It updates the occurrence, parent decision metadata, and any related deduction ledger row in one server-side transaction.
 
 Evidence files should be stored under paths beginning with the family id:
 
@@ -170,16 +196,25 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
   -f supabase/migrations/0001_initial_schema.sql
 psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
   -f supabase/migrations/0002_child_profiles_and_invites.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0003_parent_invites.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0004_family_bootstrap.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0005_parent_review_decisions.sql
 ```
 
 ## Next Slices
 
-1. Apply `0003_parent_invites.sql`, then deploy `accept-child-invite` and `accept-parent-invite`.
-2. Add Supabase auth bootstrapping and route from `family_members.role`.
-3. Replace local seed state with Supabase-backed families, chores, occurrences, and ledger reads.
-4. Smoke-test auth-backed evidence upload and AI review on a physical phone.
-5. Replace the native camera sheet with a custom camera preview if the MVP needs guided framing controls.
-6. Persist allowance settings, notification preferences, and rollover state in Supabase once auth-backed family loading is live.
-7. Add a dedicated child allowance-day celebration screen surfaced from push/local notification and dashboard state.
-8. Add parent-facing allowance-period closeout review before a child message request is sent.
-9. Add Universal Links.
+1. Sync bonuses, chore edits, and allowance settings back to Supabase instead of keeping those writes local after remote load.
+2. Smoke-test parent review sync across two TestFlight devices: parent reviews a task, child foregrounds or refreshes the app, and widgets update from the refreshed App Group snapshot.
+3. Smoke-test auth-backed evidence upload and AI review on a physical phone against the remote family.
+4. Add family/chore evidence settings from `docs/privacy-and-evidence-roadmap.md`.
+5. Add on-device person/face blocking before evidence upload.
+6. Add evidence deletion scheduling after parent review, including the undo grace window and allowance-period cleanup backstop.
+7. Add nightly retention cleanup for stale evidence and expired invite tokens.
+8. Add realtime or push-triggered refresh so both parent phones and child phones converge without manually tapping Refresh.
+9. Persist notification preferences and rollover closeout state in Supabase once remote writes are live.
+10. Add a dedicated child allowance-day celebration screen surfaced from push/local notification and dashboard state.
+11. Add parent-facing allowance-period closeout review before a child message request is sent.
+12. Add Universal Links.

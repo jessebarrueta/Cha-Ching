@@ -583,7 +583,7 @@ public struct ChoreSubmission: Identifiable, Codable, Equatable {
 }
 
 public struct ParentDecision: Codable, Equatable {
-    public enum Decision: String, Codable {
+    public enum Decision: String, Codable, Sendable {
         case approved
         case rejected
         case excused
