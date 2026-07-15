@@ -144,6 +144,32 @@ struct ParentInviteRecord: Codable, Identifiable, Sendable {
     }
 }
 
+struct FamilyEvidencePolicyRecord: Codable, Identifiable, Sendable {
+    let familyId: UUID
+    let photoEvidenceEnabled: Bool
+    let defaultVerificationMode: String
+    let blockPeopleInPhotos: Bool
+    let evidenceRetentionMode: String
+    let deleteGraceMinutes: Int
+    let deleteAfterPeriodCloseDays: Int
+    let createdAt: Date
+    let updatedAt: Date
+
+    var id: UUID { familyId }
+
+    enum CodingKeys: String, CodingKey {
+        case familyId = "family_id"
+        case photoEvidenceEnabled = "photo_evidence_enabled"
+        case defaultVerificationMode = "default_verification_mode"
+        case blockPeopleInPhotos = "block_people_in_photos"
+        case evidenceRetentionMode = "evidence_retention_mode"
+        case deleteGraceMinutes = "delete_grace_minutes"
+        case deleteAfterPeriodCloseDays = "delete_after_period_close_days"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
 struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let familyId: UUID
@@ -155,6 +181,9 @@ struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
     let expectedEvidence: String?
     let deductionCents: Int
     let verificationMode: String
+    let blockPeopleInPhotos: Bool?
+    let evidenceRetentionMode: String?
+    let evidenceDeleteGraceMinutes: Int?
     let recurrence: RecurrencePayload
     let dueWindowMinutes: Int
     let reminderOffsetsMinutes: [Int]
@@ -173,6 +202,9 @@ struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
         case expectedEvidence = "expected_evidence"
         case deductionCents = "deduction_cents"
         case verificationMode = "verification_mode"
+        case blockPeopleInPhotos = "block_people_in_photos"
+        case evidenceRetentionMode = "evidence_retention_mode"
+        case evidenceDeleteGraceMinutes = "evidence_delete_grace_minutes"
         case recurrence
         case dueWindowMinutes = "due_window_minutes"
         case reminderOffsetsMinutes = "reminder_offsets_minutes"
@@ -246,7 +278,7 @@ struct ChoreSubmissionRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let taskOccurrenceId: UUID
     let childId: UUID
-    let imagePath: String
+    let imagePath: String?
     let thumbnailPath: String?
     let submittedAt: Date
     let aiResult: RemoteAIReviewResult?
@@ -263,6 +295,20 @@ struct ChoreSubmissionRecord: Codable, Identifiable, Sendable {
         case aiResult = "ai_result"
         case parentDecision = "parent_decision"
         case createdAt = "created_at"
+    }
+}
+
+struct NoPhotoSubmissionResponse: Decodable, Sendable {
+    let submissionId: UUID
+    let taskOccurrenceId: UUID
+    let status: String
+    let submittedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case submissionId = "submission_id"
+        case taskOccurrenceId = "task_occurrence_id"
+        case status
+        case submittedAt = "submitted_at"
     }
 }
 

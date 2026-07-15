@@ -82,6 +82,18 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func fetchFamilyEvidencePolicy(familyId: UUID) async throws -> FamilyEvidencePolicyRecord? {
+        let records: [FamilyEvidencePolicyRecord] = try await client
+            .from("family_evidence_policies")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+
+        return records.first
+    }
+
     func fetchWeeks(familyId: UUID, childId: UUID) async throws -> [WeekRecord] {
         try await client
             .from("weeks")
@@ -260,17 +272,41 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func upsertFamilyEvidencePolicy(_ policy: FamilyEvidencePolicy) async throws -> FamilyEvidencePolicyRecord {
+        let payload = FamilyEvidencePolicyUpsert(
+            familyId: policy.familyId,
+            photoEvidenceEnabled: policy.photoEvidenceEnabled,
+            defaultVerificationMode: policy.defaultVerificationMode.rawValue,
+            blockPeopleInPhotos: policy.blockPeopleInPhotos,
+            evidenceRetentionMode: policy.evidenceRetentionMode.rawValue,
+            deleteGraceMinutes: policy.deleteGraceMinutes,
+            deleteAfterPeriodCloseDays: policy.deleteAfterPeriodCloseDays
+        )
+
+        return try await client
+            .from("family_evidence_policies")
+            .upsert(payload, onConflict: "family_id")
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     func updateChore(
         id: UUID,
         title: String,
         shortTitle: String,
         deductionCents: Int,
-        dueTime: String
+        dueTime: String,
+        verificationMode: VerificationMode,
+        blockPeopleInPhotos: Bool?
     ) async throws -> ChoreDefinitionRecord {
         let payload = ChoreDefinitionUpdate(
             title: title,
             shortTitle: shortTitle,
             deductionCents: deductionCents,
+            verificationMode: verificationMode.rawValue,
+            blockPeopleInPhotos: blockPeopleInPhotos,
             recurrence: RecurrencePayload(
                 type: "daily",
                 times: [dueTime],
@@ -371,7 +407,7 @@ struct SupabaseRemoteStore: Sendable {
         id: UUID,
         occurrenceId: UUID,
         childId: UUID,
-        imagePath: String
+        imagePath: String?
     ) async throws -> ChoreSubmissionRecord {
         let payload = ChoreSubmissionInsert(
             id: id,
@@ -387,6 +423,22 @@ struct SupabaseRemoteStore: Sendable {
             .single()
             .execute()
             .value
+    }
+
+    func submitChoreWithoutPhoto(occurrenceId: UUID) async throws -> NoPhotoSubmissionResponse {
+        let responses: [NoPhotoSubmissionResponse] = try await client
+            .rpc(
+                "submit_chore_without_photo",
+                params: NoPhotoSubmissionParams(targetOccurrenceId: occurrenceId)
+            )
+            .execute()
+            .value
+
+        guard let response = responses.first else {
+            throw SupabaseRemoteStoreError.emptyNoPhotoSubmissionResponse
+        }
+
+        return response
     }
 
     func reviewEvidence(submissionId: UUID) async throws -> ReviewEvidenceResponse {
@@ -464,6 +516,7 @@ struct SupabaseRemoteStore: Sendable {
 enum SupabaseRemoteStoreError: LocalizedError {
     case emptyBootstrapResponse
     case emptyParentReviewDecisionResponse
+    case emptyNoPhotoSubmissionResponse
 
     var errorDescription: String? {
         switch self {
@@ -471,6 +524,8 @@ enum SupabaseRemoteStoreError: LocalizedError {
             return "Supabase did not return a family after bootstrapping."
         case .emptyParentReviewDecisionResponse:
             return "Supabase did not return the reviewed task."
+        case .emptyNoPhotoSubmissionResponse:
+            return "Supabase did not return the submitted task."
         }
     }
 }
@@ -559,16 +614,40 @@ private struct FamilyAllowanceSettingsUpdate: Encodable {
     }
 }
 
+private struct FamilyEvidencePolicyUpsert: Encodable {
+    let familyId: UUID
+    let photoEvidenceEnabled: Bool
+    let defaultVerificationMode: String
+    let blockPeopleInPhotos: Bool
+    let evidenceRetentionMode: String
+    let deleteGraceMinutes: Int
+    let deleteAfterPeriodCloseDays: Int
+
+    enum CodingKeys: String, CodingKey {
+        case familyId = "family_id"
+        case photoEvidenceEnabled = "photo_evidence_enabled"
+        case defaultVerificationMode = "default_verification_mode"
+        case blockPeopleInPhotos = "block_people_in_photos"
+        case evidenceRetentionMode = "evidence_retention_mode"
+        case deleteGraceMinutes = "delete_grace_minutes"
+        case deleteAfterPeriodCloseDays = "delete_after_period_close_days"
+    }
+}
+
 private struct ChoreDefinitionUpdate: Encodable {
     let title: String
     let shortTitle: String
     let deductionCents: Int
+    let verificationMode: String
+    let blockPeopleInPhotos: Bool?
     let recurrence: RecurrencePayload
 
     enum CodingKeys: String, CodingKey {
         case title
         case shortTitle = "short_title"
         case deductionCents = "deduction_cents"
+        case verificationMode = "verification_mode"
+        case blockPeopleInPhotos = "block_people_in_photos"
         case recurrence
     }
 }
@@ -617,13 +696,21 @@ private struct ChoreSubmissionInsert: Encodable {
     let id: UUID
     let taskOccurrenceId: UUID
     let childId: UUID
-    let imagePath: String
+    let imagePath: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case taskOccurrenceId = "task_occurrence_id"
         case childId = "child_id"
         case imagePath = "image_path"
+    }
+}
+
+private struct NoPhotoSubmissionParams: Encodable {
+    let targetOccurrenceId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case targetOccurrenceId = "target_occurrence_id"
     }
 }
 

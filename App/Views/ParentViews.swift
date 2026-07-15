@@ -340,6 +340,9 @@ struct FamilyManagementView: View {
                 AllowanceSettingsCard()
                     .environmentObject(store)
 
+                EvidencePrivacySettingsCard()
+                    .environmentObject(store)
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Parents")
                         .font(.title3.weight(.heavy))
@@ -759,6 +762,120 @@ struct AllowanceSettingsCard: View {
     }
 }
 
+struct EvidencePrivacySettingsCard: View {
+    @EnvironmentObject private var store: AppStore
+
+    private var photoEvidenceBinding: Binding<Bool> {
+        Binding {
+            store.evidencePolicy.photoEvidenceEnabled
+        } set: { value in
+            updatePolicy { $0.photoEvidenceEnabled = value }
+        }
+    }
+
+    private var defaultVerificationBinding: Binding<VerificationMode> {
+        Binding {
+            store.evidencePolicy.defaultVerificationMode
+        } set: { value in
+            updatePolicy { $0.defaultVerificationMode = value }
+        }
+    }
+
+    private var blockPeopleBinding: Binding<Bool> {
+        Binding {
+            store.evidencePolicy.blockPeopleInPhotos
+        } set: { value in
+            updatePolicy { $0.blockPeopleInPhotos = value }
+        }
+    }
+
+    private var retentionBinding: Binding<EvidenceRetentionMode> {
+        Binding {
+            store.evidencePolicy.evidenceRetentionMode
+        } set: { value in
+            updatePolicy { $0.evidenceRetentionMode = value }
+        }
+    }
+
+    private var graceBinding: Binding<Int> {
+        Binding {
+            store.evidencePolicy.deleteGraceMinutes
+        } set: { value in
+            updatePolicy { $0.deleteGraceMinutes = value }
+        }
+    }
+
+    private var periodCloseBinding: Binding<Int> {
+        Binding {
+            store.evidencePolicy.deleteAfterPeriodCloseDays
+        } set: { value in
+            updatePolicy { $0.deleteAfterPeriodCloseDays = value }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Evidence Privacy")
+                .font(.title3.weight(.heavy))
+
+            VStack(spacing: 12) {
+                Toggle("Photo evidence", isOn: photoEvidenceBinding)
+                    .font(.body.weight(.semibold))
+
+                Picker("Default proof", selection: defaultVerificationBinding) {
+                    ForEach(VerificationMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+
+                Toggle("Block people in photos", isOn: blockPeopleBinding)
+                    .font(.body.weight(.semibold))
+                    .disabled(!store.evidencePolicy.photoEvidenceEnabled)
+
+                Picker("Delete photos", selection: retentionBinding) {
+                    ForEach(EvidenceRetentionMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .disabled(!store.evidencePolicy.photoEvidenceEnabled)
+
+                Stepper(value: graceBinding, in: 0...60, step: 5) {
+                    Label("\(store.evidencePolicy.deleteGraceMinutes) min undo", systemImage: "arrow.uturn.backward.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.inkBlack)
+                }
+                .disabled(!store.evidencePolicy.photoEvidenceEnabled)
+
+                Stepper(value: periodCloseBinding, in: 0...7) {
+                    Label("\(store.evidencePolicy.deleteAfterPeriodCloseDays) day cleanup", systemImage: "calendar.badge.clock")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.inkBlack)
+                }
+                .disabled(!store.evidencePolicy.photoEvidenceEnabled)
+            }
+            .padding(16)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.softGray, lineWidth: 1)
+            )
+        }
+    }
+
+    private func updatePolicy(_ mutation: (inout FamilyEvidencePolicy) -> Void) {
+        var policy = store.evidencePolicy
+        mutation(&policy)
+        store.updateEvidencePolicy(
+            photoEvidenceEnabled: policy.photoEvidenceEnabled,
+            defaultVerificationMode: policy.defaultVerificationMode,
+            blockPeopleInPhotos: policy.blockPeopleInPhotos,
+            evidenceRetentionMode: policy.evidenceRetentionMode,
+            deleteGraceMinutes: policy.deleteGraceMinutes,
+            deleteAfterPeriodCloseDays: policy.deleteAfterPeriodCloseDays
+        )
+    }
+}
+
 struct ParentMemberCard: View {
     var member: FamilyMember
     var isCurrentSession: Bool
@@ -1046,12 +1163,16 @@ struct EditChoreSheet: View {
     @State private var title: String
     @State private var deduction: String
     @State private var dueTime: String
+    @State private var verificationMode: VerificationMode
+    @State private var blockPeopleInPhotos: Bool
 
     init(chore: ChoreDefinition) {
         self.chore = chore
         _title = State(initialValue: chore.title)
         _deduction = State(initialValue: Money.dollars(chore.deductionCents).replacingOccurrences(of: "$", with: ""))
         _dueTime = State(initialValue: chore.dueTime)
+        _verificationMode = State(initialValue: chore.verificationMode)
+        _blockPeopleInPhotos = State(initialValue: chore.blockPeopleInPhotos ?? true)
     }
 
     var body: some View {
@@ -1062,6 +1183,15 @@ struct EditChoreSheet: View {
                     TextField("Due time", text: $dueTime)
                     TextField("Deduction", text: $deduction)
                         .keyboardType(.decimalPad)
+                }
+                Section("Evidence") {
+                    Picker("Proof", selection: $verificationMode) {
+                        ForEach(VerificationMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    Toggle("Block people in photos", isOn: $blockPeopleInPhotos)
+                        .disabled(verificationMode == .parentOnly || verificationMode == .noVerification)
                 }
                 Section("Instructions") {
                     Text(chore.instructions)
@@ -1078,7 +1208,14 @@ struct EditChoreSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         if let cents = Money.cents(fromDollarString: deduction), !title.isEmpty {
-                            store.updateChore(chore, title: title, deductionCents: cents, dueTime: dueTime)
+                            store.updateChore(
+                                chore,
+                                title: title,
+                                deductionCents: cents,
+                                dueTime: dueTime,
+                                verificationMode: verificationMode,
+                                blockPeopleInPhotos: blockPeopleInPhotos
+                            )
                             dismiss()
                         }
                     }

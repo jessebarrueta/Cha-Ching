@@ -79,6 +79,7 @@ public enum SeedData {
             childProfiles: childProfiles(now: now),
             childInvites: [],
             parentInvites: [],
+            evidencePolicy: evidencePolicy(),
             chores: chores,
             occurrences: occurrences,
             submissions: submissions,
@@ -141,6 +142,10 @@ public enum SeedData {
             allowanceWeekday: .friday,
             nextAllowanceDate: nextDate(for: .friday, after: now)
         )
+    }
+
+    private static func evidencePolicy() -> FamilyEvidencePolicy {
+        FamilyEvidencePolicy(familyId: familyId)
     }
 
     private static func choreDefinitions(now: Date) -> [ChoreDefinition] {

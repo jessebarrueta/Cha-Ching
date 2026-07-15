@@ -1,6 +1,6 @@
 # Privacy and Evidence Roadmap
 
-This is the product direction for chore evidence, image retention, and device sync. It is a roadmap, not current shipped behavior.
+This is the product direction and implementation tracker for chore evidence, image retention, and device sync.
 
 ## Product Principles
 
@@ -112,11 +112,12 @@ Done:
 - Remote parent review writes: approve, reject, excuse, retake, and related ledger updates.
 - Remote refresh on app foreground plus a manual refresh affordance for parent and child.
 - Best-effort iOS background app refresh that republishes the local widget snapshot after remote sync.
+- Family/chore evidence settings UI and schema.
+- Child no-photo submission flow for chores that allow it.
 
 Next:
 
-1. Family/chore evidence settings UI and schema.
-2. On-device person/face blocking before upload.
-3. Evidence deletion scheduling in parent review actions.
-4. Nightly retention cleanup backstop.
-5. Realtime or push-triggered refresh for faster cross-device updates.
+1. On-device person/face blocking before upload.
+2. Evidence deletion scheduling in parent review actions.
+3. Nightly retention cleanup backstop.
+4. Realtime or push-triggered refresh for faster cross-device updates.

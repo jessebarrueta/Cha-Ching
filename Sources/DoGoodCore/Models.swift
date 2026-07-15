@@ -423,6 +423,66 @@ public enum VerificationMode: String, Codable, CaseIterable, Identifiable, Senda
     case noVerification = "no_verification"
 
     public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .photoRequired:
+            return "Photo required"
+        case .photoOptional:
+            return "Photo optional"
+        case .parentOnly:
+            return "Parent review"
+        case .noVerification:
+            return "No proof"
+        }
+    }
+}
+
+public enum EvidenceRetentionMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case afterParentReview = "after_parent_review"
+    case afterPeriodClose = "after_period_close"
+    case manualOnly = "manual_only"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .afterParentReview:
+            return "After review"
+        case .afterPeriodClose:
+            return "After period"
+        case .manualOnly:
+            return "Manual"
+        }
+    }
+}
+
+public struct FamilyEvidencePolicy: Codable, Equatable, Sendable {
+    public var familyId: UUID
+    public var photoEvidenceEnabled: Bool
+    public var defaultVerificationMode: VerificationMode
+    public var blockPeopleInPhotos: Bool
+    public var evidenceRetentionMode: EvidenceRetentionMode
+    public var deleteGraceMinutes: Int
+    public var deleteAfterPeriodCloseDays: Int
+
+    public init(
+        familyId: UUID,
+        photoEvidenceEnabled: Bool = true,
+        defaultVerificationMode: VerificationMode = .photoOptional,
+        blockPeopleInPhotos: Bool = true,
+        evidenceRetentionMode: EvidenceRetentionMode = .afterParentReview,
+        deleteGraceMinutes: Int = 10,
+        deleteAfterPeriodCloseDays: Int = 1
+    ) {
+        self.familyId = familyId
+        self.photoEvidenceEnabled = photoEvidenceEnabled
+        self.defaultVerificationMode = defaultVerificationMode
+        self.blockPeopleInPhotos = blockPeopleInPhotos
+        self.evidenceRetentionMode = evidenceRetentionMode
+        self.deleteGraceMinutes = deleteGraceMinutes
+        self.deleteAfterPeriodCloseDays = deleteAfterPeriodCloseDays
+    }
 }
 
 public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
@@ -436,6 +496,9 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
     public var expectedEvidence: String
     public var deductionCents: Int
     public var verificationMode: VerificationMode
+    public var blockPeopleInPhotos: Bool?
+    public var evidenceRetentionMode: EvidenceRetentionMode?
+    public var evidenceDeleteGraceMinutes: Int?
     public var dueTime: String
     public var dueWindowMinutes: Int
     public var reminderOffsetsMinutes: [Int]
@@ -454,6 +517,9 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
         expectedEvidence: String,
         deductionCents: Int,
         verificationMode: VerificationMode = .photoRequired,
+        blockPeopleInPhotos: Bool? = nil,
+        evidenceRetentionMode: EvidenceRetentionMode? = nil,
+        evidenceDeleteGraceMinutes: Int? = nil,
         dueTime: String,
         dueWindowMinutes: Int = 90,
         reminderOffsetsMinutes: [Int] = [15, 0],
@@ -471,6 +537,9 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
         self.expectedEvidence = expectedEvidence
         self.deductionCents = deductionCents
         self.verificationMode = verificationMode
+        self.blockPeopleInPhotos = blockPeopleInPhotos
+        self.evidenceRetentionMode = evidenceRetentionMode
+        self.evidenceDeleteGraceMinutes = evidenceDeleteGraceMinutes
         self.dueTime = dueTime
         self.dueWindowMinutes = dueWindowMinutes
         self.reminderOffsetsMinutes = reminderOffsetsMinutes
@@ -617,6 +686,7 @@ public struct SeedSnapshot: Sendable {
     public var childProfiles: [ChildProfile]
     public var childInvites: [ChildInvite]
     public var parentInvites: [ParentInvite]
+    public var evidencePolicy: FamilyEvidencePolicy
     public var chores: [ChoreDefinition]
     public var occurrences: [TaskOccurrence]
     public var submissions: [ChoreSubmission]

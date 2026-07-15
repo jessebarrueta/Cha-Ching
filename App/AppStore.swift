@@ -27,6 +27,7 @@ final class AppStore: ObservableObject {
     @Published var submissions: [ChoreSubmission]
     @Published var ledger: [LedgerEntry]
     @Published var allowanceSettings: AllowanceSettings
+    @Published var evidencePolicy: FamilyEvidencePolicy
     @Published var notificationState: NotificationState
     @Published var familySyncState: FamilySyncState
 
@@ -72,6 +73,7 @@ final class AppStore: ObservableObject {
         self.occurrences = snapshot.occurrences
         self.submissions = snapshot.submissions
         self.ledger = snapshot.ledger
+        self.evidencePolicy = snapshot.evidencePolicy
         if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
            savedSettings.familyId == snapshot.familyId {
             self.allowanceSettings = savedSettings
@@ -562,6 +564,27 @@ final class AppStore: ObservableObject {
         submitMockEvidence(for: occurrenceId)
     }
 
+    func submitWithoutPhoto(for occurrenceId: UUID) async {
+        do {
+            guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+                submitLocalCompletion(for: occurrenceId)
+                return
+            }
+
+            _ = try await remoteStore.currentSession()
+            let response = try await remoteStore.submitChoreWithoutPhoto(occurrenceId: occurrenceId)
+            applyNoPhotoSubmission(
+                submissionId: response.submissionId,
+                occurrenceId: response.taskOccurrenceId,
+                status: TaskOccurrenceStatus(rawValue: response.status) ?? .submitted,
+                submittedAt: response.submittedAt
+            )
+        } catch {
+            debugPrint("Remote no-photo submission failed:", error.localizedDescription)
+            submitLocalCompletion(for: occurrenceId)
+        }
+    }
+
     private func submitRemoteEvidence(for occurrenceId: UUID, jpegData: Data) async throws {
         guard let index = occurrences.firstIndex(where: { $0.id == occurrenceId }) else {
             return
@@ -616,6 +639,40 @@ final class AppStore: ObservableObject {
         upsertSubmission(submission)
         occurrences[index].submissionId = submission.id
         occurrences[index].status = .aiReviewed
+        occurrences[index].updatedAt = Date()
+        publishWidgetSnapshot()
+    }
+
+    private func submitLocalCompletion(for occurrenceId: UUID) {
+        applyNoPhotoSubmission(
+            submissionId: UUID(),
+            occurrenceId: occurrenceId,
+            status: .submitted,
+            submittedAt: Date()
+        )
+    }
+
+    private func applyNoPhotoSubmission(
+        submissionId: UUID,
+        occurrenceId: UUID,
+        status: TaskOccurrenceStatus,
+        submittedAt: Date
+    ) {
+        guard let index = occurrences.firstIndex(where: { $0.id == occurrenceId }) else {
+            return
+        }
+
+        let submission = ChoreSubmission(
+            id: submissionId,
+            taskOccurrenceId: occurrenceId,
+            childId: occurrences[index].childId,
+            imageName: "no-photo",
+            submittedAt: submittedAt
+        )
+
+        upsertSubmission(submission)
+        occurrences[index].submissionId = submission.id
+        occurrences[index].status = status
         occurrences[index].updatedAt = Date()
         publishWidgetSnapshot()
     }
@@ -720,6 +777,56 @@ final class AppStore: ObservableObject {
         Task {
             await syncAllowanceSettings(updatedSettings)
             await refreshNotificationScheduleIfAuthorized()
+        }
+    }
+
+    func updateEvidencePolicy(
+        photoEvidenceEnabled: Bool,
+        defaultVerificationMode: VerificationMode,
+        blockPeopleInPhotos: Bool,
+        evidenceRetentionMode: EvidenceRetentionMode,
+        deleteGraceMinutes: Int,
+        deleteAfterPeriodCloseDays: Int
+    ) {
+        let updatedPolicy = FamilyEvidencePolicy(
+            familyId: familyId,
+            photoEvidenceEnabled: photoEvidenceEnabled,
+            defaultVerificationMode: defaultVerificationMode,
+            blockPeopleInPhotos: blockPeopleInPhotos,
+            evidenceRetentionMode: evidenceRetentionMode,
+            deleteGraceMinutes: deleteGraceMinutes,
+            deleteAfterPeriodCloseDays: deleteAfterPeriodCloseDays
+        )
+        evidencePolicy = updatedPolicy
+
+        Task {
+            await syncEvidencePolicy(updatedPolicy)
+        }
+    }
+
+    func allowsPhotoEvidence(for chore: ChoreDefinition) -> Bool {
+        guard evidencePolicy.photoEvidenceEnabled else {
+            return false
+        }
+
+        switch chore.verificationMode {
+        case .photoRequired, .photoOptional:
+            return true
+        case .parentOnly, .noVerification:
+            return false
+        }
+    }
+
+    func allowsNoPhotoSubmission(for chore: ChoreDefinition) -> Bool {
+        guard evidencePolicy.photoEvidenceEnabled else {
+            return true
+        }
+
+        switch chore.verificationMode {
+        case .photoRequired:
+            return false
+        case .photoOptional, .parentOnly, .noVerification:
+            return true
         }
     }
 
@@ -838,7 +945,14 @@ final class AppStore: ObservableObject {
         "chaching.chore.\(choreId.uuidString).offset.\(offsetMinutes)"
     }
 
-    func updateChore(_ chore: ChoreDefinition, title: String, deductionCents: Int, dueTime: String) {
+    func updateChore(
+        _ chore: ChoreDefinition,
+        title: String,
+        deductionCents: Int,
+        dueTime: String,
+        verificationMode: VerificationMode,
+        blockPeopleInPhotos: Bool
+    ) {
         guard let index = chores.firstIndex(where: { $0.id == chore.id }) else {
             return
         }
@@ -855,6 +969,8 @@ final class AppStore: ObservableObject {
         chores[index].shortTitle = shortTitle
         chores[index].deductionCents = deductionCents
         chores[index].dueTime = dueTime
+        chores[index].verificationMode = verificationMode
+        chores[index].blockPeopleInPhotos = blockPeopleInPhotos
         chores[index].updatedAt = Date()
 
         for update in occurrenceUpdates {
@@ -878,6 +994,8 @@ final class AppStore: ObservableObject {
                 shortTitle: shortTitle,
                 deductionCents: deductionCents,
                 dueTime: dueTime,
+                verificationMode: verificationMode,
+                blockPeopleInPhotos: blockPeopleInPhotos,
                 occurrenceUpdates: occurrenceUpdates
             )
             await refreshNotificationScheduleIfAuthorized()
@@ -905,6 +1023,7 @@ final class AppStore: ObservableObject {
         occurrences = snapshot.occurrences
         submissions = snapshot.submissions
         ledger = snapshot.ledger
+        evidencePolicy = snapshot.evidencePolicy
 
         if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
            savedSettings.familyId == snapshot.familyId {
@@ -921,6 +1040,7 @@ final class AppStore: ObservableObject {
         let familyRecord = try await remoteStore.fetchFamily(id: membership.familyId)
         let memberRecords = try await remoteStore.fetchFamilyMembers(familyId: membership.familyId)
         let profileRecords = try await remoteStore.fetchChildProfiles(familyId: membership.familyId)
+        let evidencePolicyRecord = try await remoteStore.fetchFamilyEvidencePolicy(familyId: membership.familyId)
 
         guard let selectedChildProfile = selectedRemoteChildProfile(
             from: profileRecords,
@@ -971,6 +1091,8 @@ final class AppStore: ObservableObject {
         occurrences = remoteOccurrences
         submissions = remoteSubmissions
         ledger = ledgerRecords.map { localLedgerEntry(from: $0) }
+        evidencePolicy = evidencePolicyRecord.map { localEvidencePolicy(from: $0) }
+            ?? FamilyEvidencePolicy(familyId: familyRecord.id)
 
         if let remoteSettings = Self.allowanceSettings(from: familyRecord) {
             allowanceSettings = remoteSettings
@@ -1042,6 +1164,9 @@ final class AppStore: ObservableObject {
             expectedEvidence: record.expectedEvidence ?? "A clear photo showing the completed chore.",
             deductionCents: record.deductionCents,
             verificationMode: VerificationMode(rawValue: record.verificationMode) ?? .photoRequired,
+            blockPeopleInPhotos: record.blockPeopleInPhotos,
+            evidenceRetentionMode: record.evidenceRetentionMode.flatMap { EvidenceRetentionMode(rawValue: $0) },
+            evidenceDeleteGraceMinutes: record.evidenceDeleteGraceMinutes,
             dueTime: record.recurrence.times?.first ?? "8:00 PM",
             dueWindowMinutes: record.dueWindowMinutes,
             reminderOffsetsMinutes: record.reminderOffsetsMinutes,
@@ -1074,10 +1199,22 @@ final class AppStore: ObservableObject {
             id: record.id,
             taskOccurrenceId: record.taskOccurrenceId,
             childId: record.childId,
-            imageName: record.imagePath,
+            imageName: record.imagePath ?? "no-photo",
             submittedAt: record.submittedAt,
             aiResult: record.aiResult.map { localAIReviewResult(from: $0) },
             parentDecision: record.parentDecision.flatMap { localParentDecision(from: $0) }
+        )
+    }
+
+    private func localEvidencePolicy(from record: FamilyEvidencePolicyRecord) -> FamilyEvidencePolicy {
+        FamilyEvidencePolicy(
+            familyId: record.familyId,
+            photoEvidenceEnabled: record.photoEvidenceEnabled,
+            defaultVerificationMode: VerificationMode(rawValue: record.defaultVerificationMode) ?? .photoOptional,
+            blockPeopleInPhotos: record.blockPeopleInPhotos,
+            evidenceRetentionMode: EvidenceRetentionMode(rawValue: record.evidenceRetentionMode) ?? .afterParentReview,
+            deleteGraceMinutes: record.deleteGraceMinutes,
+            deleteAfterPeriodCloseDays: record.deleteAfterPeriodCloseDays
         )
     }
 
@@ -1526,12 +1663,27 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func syncEvidencePolicy(_ policy: FamilyEvidencePolicy) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.upsertFamilyEvidencePolicy(policy)
+        } catch {
+            familySyncState = .failed("Evidence settings saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
+    }
+
     private func syncChore(
         id: UUID,
         title: String,
         shortTitle: String,
         deductionCents: Int,
         dueTime: String,
+        verificationMode: VerificationMode,
+        blockPeopleInPhotos: Bool,
         occurrenceUpdates: [OccurrenceTimeUpdate]
     ) async {
         guard SupabaseClientProvider.shared.auth.currentSession != nil else {
@@ -1545,7 +1697,9 @@ final class AppStore: ObservableObject {
                 title: title,
                 shortTitle: shortTitle,
                 deductionCents: deductionCents,
-                dueTime: dueTime
+                dueTime: dueTime,
+                verificationMode: verificationMode,
+                blockPeopleInPhotos: blockPeopleInPhotos
             )
             for update in occurrenceUpdates {
                 _ = try await remoteStore.updateOccurrenceTiming(

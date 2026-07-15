@@ -5,6 +5,8 @@ struct TaskDetailView: View {
     @EnvironmentObject private var store: AppStore
     var occurrenceId: UUID
 
+    @State private var isSubmittingWithoutPhoto = false
+
     private var occurrence: TaskOccurrence? {
         store.occurrences.first { $0.id == occurrenceId }
     }
@@ -40,17 +42,39 @@ struct TaskDetailView: View {
                         }
                         .cardSurface()
 
-                        NavigationLink {
-                            CameraCaptureView(occurrenceId: occurrence.id)
-                        } label: {
-                            Label("Take Photo", systemImage: "camera.fill")
+                        if store.allowsPhotoEvidence(for: chore) {
+                            NavigationLink {
+                                CameraCaptureView(occurrenceId: occurrence.id)
+                            } label: {
+                                Label("Take Photo", systemImage: "camera.fill")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 52)
+                                    .foregroundStyle(Color.paperWhite)
+                                    .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if store.allowsNoPhotoSubmission(for: chore) {
+                            Button {
+                                Task {
+                                    await submitWithoutPhoto()
+                                }
+                            } label: {
+                                Label(
+                                    occurrence.status == .submitted ? "Submitted" : "Submit Done",
+                                    systemImage: occurrence.status == .submitted ? "checkmark.circle.fill" : "checkmark.circle"
+                                )
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 52)
-                                .foregroundStyle(Color.paperWhite)
-                                .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .foregroundStyle(Color.inkBlack)
+                                .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isSubmittingWithoutPhoto || !occurrence.status.isOpen)
                         }
-                        .buttonStyle(.plain)
 
                         Button {
                             store.requestExcuse(occurrence)
@@ -71,6 +95,16 @@ struct TaskDetailView: View {
                 ContentUnavailableView("Task not found", systemImage: "questionmark.circle")
             }
         }
+    }
+
+    private func submitWithoutPhoto() async {
+        guard !isSubmittingWithoutPhoto else {
+            return
+        }
+
+        isSubmittingWithoutPhoto = true
+        await store.submitWithoutPhoto(for: occurrenceId)
+        isSubmittingWithoutPhoto = false
     }
 
     private func taskHero(chore: ChoreDefinition) -> some View {
