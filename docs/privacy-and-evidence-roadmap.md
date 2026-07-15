@@ -111,6 +111,7 @@ Done:
 
 - Remote parent review writes: approve, reject, excuse, retake, and related ledger updates.
 - Remote refresh on app foreground plus a manual refresh affordance for parent and child.
+- Best-effort iOS background app refresh that republishes the local widget snapshot after remote sync.
 
 Next:
 

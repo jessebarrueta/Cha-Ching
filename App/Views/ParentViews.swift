@@ -452,8 +452,10 @@ struct FamilyManagementView: View {
 
 struct FamilySyncCard: View {
     @EnvironmentObject private var store: AppStore
+    @State private var signInMethod: FamilySyncSignInMethod = .email
+    @State private var email = ""
     @State private var phoneNumber = ""
-    @State private var smsCode = ""
+    @State private var oneTimeCode = ""
     @State private var bootstrapParentName = "Daddy"
     @State private var bootstrapChildName = "Zoe"
 
@@ -479,14 +481,32 @@ struct FamilySyncCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 12) {
-                TextField("Phone number", text: $phoneNumber)
-                    .textContentType(.telephoneNumber)
-                    .keyboardType(.phonePad)
-                    .font(.body.weight(.semibold))
-                    .textFieldStyle(.roundedBorder)
+                Picker("Sign in method", selection: $signInMethod) {
+                    ForEach(FamilySyncSignInMethod.allCases) { method in
+                        Text(method.title).tag(method)
+                    }
+                }
+                .pickerStyle(.segmented)
 
-                if store.familySyncState.codePhoneNumber != nil {
-                    TextField("Text code", text: $smsCode)
+                switch signInMethod {
+                case .email:
+                    TextField("Email address", text: $email)
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .font(.body.weight(.semibold))
+                        .textFieldStyle(.roundedBorder)
+                case .phone:
+                    TextField("Phone number", text: $phoneNumber)
+                        .textContentType(.telephoneNumber)
+                        .keyboardType(.phonePad)
+                        .font(.body.weight(.semibold))
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                if store.familySyncState.hasPendingCode {
+                    TextField("One-time code", text: $oneTimeCode)
                         .textContentType(.oneTimeCode)
                         .keyboardType(.numberPad)
                         .font(.body.weight(.semibold))
@@ -496,10 +516,10 @@ struct FamilySyncCard: View {
                 HStack(spacing: 10) {
                     Button {
                         Task {
-                            await store.requestFamilySyncCode(phoneNumber: phoneNumber)
+                            await requestCode()
                         }
                     } label: {
-                        Label("Send Code", systemImage: "message.fill")
+                        Label("Send Code", systemImage: signInMethod.iconName)
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
@@ -510,10 +530,7 @@ struct FamilySyncCard: View {
 
                     Button {
                         Task {
-                            await store.verifyFamilySyncCode(
-                                phoneNumber: store.familySyncState.codePhoneNumber ?? phoneNumber,
-                                code: smsCode
-                            )
+                            await verifyCode()
                         }
                     } label: {
                         Label("Verify", systemImage: "checkmark.circle.fill")
@@ -524,7 +541,7 @@ struct FamilySyncCard: View {
                             .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .disabled(store.familySyncState.codePhoneNumber == nil)
+                    .disabled(!store.familySyncState.hasPendingCode)
                 }
 
                 if store.familySyncState.needsBootstrap {
@@ -588,6 +605,57 @@ struct FamilySyncCard: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(store.familySyncState.isSynced ? Color.acidLime : Color.softGray, lineWidth: 1.5)
         )
+    }
+
+    private func requestCode() async {
+        oneTimeCode = ""
+
+        switch signInMethod {
+        case .email:
+            await store.requestFamilySyncEmailCode(email: email)
+        case .phone:
+            await store.requestFamilySyncCode(phoneNumber: phoneNumber)
+        }
+    }
+
+    private func verifyCode() async {
+        switch signInMethod {
+        case .email:
+            await store.verifyFamilySyncEmailCode(
+                email: store.familySyncState.codeEmail ?? email,
+                code: oneTimeCode
+            )
+        case .phone:
+            await store.verifyFamilySyncCode(
+                phoneNumber: store.familySyncState.codePhoneNumber ?? phoneNumber,
+                code: oneTimeCode
+            )
+        }
+    }
+}
+
+private enum FamilySyncSignInMethod: String, CaseIterable, Identifiable {
+    case email
+    case phone
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .email:
+            return "Email"
+        case .phone:
+            return "Phone"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .email:
+            return "envelope.fill"
+        case .phone:
+            return "message.fill"
+        }
     }
 }
 

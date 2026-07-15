@@ -5,6 +5,13 @@ import UserNotifications
 import WidgetKit
 #endif
 
+private struct OccurrenceTimeUpdate: Sendable {
+    let id: UUID
+    let scheduledAt: Date
+    let dueAt: Date
+    let expiresAt: Date
+}
+
 @MainActor
 final class AppStore: ObservableObject {
     @Published var session: AppSession
@@ -239,6 +246,47 @@ final class AppStore: ObservableObject {
         do {
             _ = try await inviteAcceptanceService.verifySMSCode(
                 phoneNumber: normalizedPhoneNumber,
+                code: trimmedCode
+            )
+            await loadRemoteFamilyState()
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func requestFamilySyncEmailCode(email: String) async {
+        guard let normalizedEmail = Self.normalizedEmail(email) else {
+            familySyncState = .failed(InviteAcceptanceError.invalidEmail.localizedDescription)
+            return
+        }
+
+        familySyncState = .loading
+
+        do {
+            try await inviteAcceptanceService.requestEmailCode(email: normalizedEmail)
+            familySyncState = .emailCodeSent(email: normalizedEmail)
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func verifyFamilySyncEmailCode(email: String, code: String) async {
+        guard let normalizedEmail = Self.normalizedEmail(email) else {
+            familySyncState = .failed(InviteAcceptanceError.invalidEmail.localizedDescription)
+            return
+        }
+
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            familySyncState = .failed(InviteAcceptanceError.invalidCode.localizedDescription)
+            return
+        }
+
+        familySyncState = .loading
+
+        do {
+            _ = try await inviteAcceptanceService.verifyEmailCode(
+                email: normalizedEmail,
                 code: trimmedCode
             )
             await loadRemoteFamilyState()
@@ -638,15 +686,19 @@ final class AppStore: ObservableObject {
     }
 
     func addBonus(title: String, amountCents: Int, note: String?) {
-        ledger.append(
-            AllowanceEngine.bonusEntry(
-                weekId: weekId,
-                title: title,
-                amountCents: amountCents,
-                note: note
-            )
+        let entry = LedgerEntry(
+            weekId: weekId,
+            type: .bonus,
+            title: title,
+            amountCents: amountCents,
+            note: note
         )
+        ledger.append(entry)
         publishWidgetSnapshot()
+
+        Task {
+            await syncBonusEntry(entry)
+        }
     }
 
     func updateAllowanceSettings(
@@ -654,13 +706,19 @@ final class AppStore: ObservableObject {
         allowanceWeekday: AllowanceWeekday,
         nextAllowanceDate: Date
     ) {
-        allowanceSettings.cadence = cadence
-        allowanceSettings.allowanceWeekday = allowanceWeekday
-        allowanceSettings.nextAllowanceDate = Calendar.current.startOfDay(for: nextAllowanceDate)
+        let updatedSettings = AllowanceSettings(
+            familyId: familyId,
+            baseAllowanceCents: allowanceSettings.baseAllowanceCents,
+            cadence: cadence,
+            allowanceWeekday: allowanceWeekday,
+            nextAllowanceDate: Calendar.current.startOfDay(for: nextAllowanceDate)
+        )
+        allowanceSettings = updatedSettings
         saveAllowanceSettings()
         publishWidgetSnapshot()
 
         Task {
+            await syncAllowanceSettings(updatedSettings)
             await refreshNotificationScheduleIfAuthorized()
         }
     }
@@ -785,13 +843,43 @@ final class AppStore: ObservableObject {
             return
         }
 
+        let choreId = chore.id
+        let shortTitle = Self.shortTitle(from: title)
+        let occurrenceUpdates = occurrenceTimeUpdates(
+            for: choreId,
+            dueTime: dueTime,
+            dueWindowMinutes: chore.dueWindowMinutes
+        )
+
         chores[index].title = title
+        chores[index].shortTitle = shortTitle
         chores[index].deductionCents = deductionCents
         chores[index].dueTime = dueTime
         chores[index].updatedAt = Date()
+
+        for update in occurrenceUpdates {
+            updateOccurrence(update.id) { task in
+                task.scheduledAt = update.scheduledAt
+                task.dueAt = update.dueAt
+                task.expiresAt = update.expiresAt
+                if task.status == .upcoming || task.status == .due {
+                    task.status = update.dueAt <= Date() ? .due : .upcoming
+                }
+                task.updatedAt = Date()
+            }
+        }
+
         publishWidgetSnapshot()
 
         Task {
+            await syncChore(
+                id: choreId,
+                title: title,
+                shortTitle: shortTitle,
+                deductionCents: deductionCents,
+                dueTime: dueTime,
+                occurrenceUpdates: occurrenceUpdates
+            )
             await refreshNotificationScheduleIfAuthorized()
         }
     }
@@ -884,8 +972,11 @@ final class AppStore: ObservableObject {
         submissions = remoteSubmissions
         ledger = ledgerRecords.map { localLedgerEntry(from: $0) }
 
-        if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
-           savedSettings.familyId == familyRecord.id {
+        if let remoteSettings = Self.allowanceSettings(from: familyRecord) {
+            allowanceSettings = remoteSettings
+            saveAllowanceSettings()
+        } else if let savedSettings = Self.loadAllowanceSettings(from: settingsStore, key: allowanceSettingsKey),
+                  savedSettings.familyId == familyRecord.id {
             allowanceSettings = savedSettings
         } else {
             allowanceSettings = AllowanceSettings(
@@ -1030,6 +1121,23 @@ final class AppStore: ObservableObject {
         )
     }
 
+    private static func allowanceSettings(from record: FamilyRecord) -> AllowanceSettings? {
+        guard let cadenceRawValue = record.allowanceCadence,
+              let cadence = AllowanceCadence(rawValue: cadenceRawValue),
+              let weekdayRawValue = record.allowanceWeekday,
+              let weekday = AllowanceWeekday(rawValue: weekdayRawValue) else {
+            return nil
+        }
+
+        return AllowanceSettings(
+            familyId: record.id,
+            baseAllowanceCents: record.weeklyBaseAllowanceCents,
+            cadence: cadence,
+            allowanceWeekday: weekday,
+            nextAllowanceDate: record.nextAllowanceAt ?? nextAllowanceDate(for: weekday)
+        )
+    }
+
     private func updateOccurrence(_ id: UUID, mutation: (inout TaskOccurrence) -> Void) {
         guard let index = occurrences.firstIndex(where: { $0.id == id }) else {
             return
@@ -1056,6 +1164,30 @@ final class AppStore: ObservableObject {
             return
         }
         mutation(&childProfiles[index])
+    }
+
+    private func occurrenceTimeUpdates(
+        for choreId: UUID,
+        dueTime: String,
+        dueWindowMinutes: Int
+    ) -> [OccurrenceTimeUpdate] {
+        occurrences.compactMap { occurrence in
+            guard occurrence.choreDefinitionId == choreId,
+                  let dueAt = Self.date(onSameDayAs: occurrence.dueAt, time: dueTime) else {
+                return nil
+            }
+
+            return OccurrenceTimeUpdate(
+                id: occurrence.id,
+                scheduledAt: dueAt,
+                dueAt: dueAt,
+                expiresAt: Calendar.current.date(
+                    byAdding: .minute,
+                    value: dueWindowMinutes,
+                    to: dueAt
+                ) ?? dueAt
+            )
+        }
     }
 
     private func upsertSubmission(_ submission: ChoreSubmission) {
@@ -1266,7 +1398,23 @@ final class AppStore: ObservableObject {
         return nil
     }
 
+    private static func normalizedEmail(_ rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard trimmed.contains("@"),
+              trimmed.contains("."),
+              !trimmed.hasPrefix("@"),
+              !trimmed.hasSuffix("@") else {
+            return nil
+        }
+
+        return trimmed
+    }
+
     private static func dateToday(for time: String) -> Date? {
+        date(onSameDayAs: Date(), time: time)
+    }
+
+    private static func date(onSameDayAs date: Date, time: String) -> Date? {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         guard let parsedTime = formatter.date(from: time) else {
@@ -1275,10 +1423,23 @@ final class AppStore: ObservableObject {
 
         let calendar = Calendar.current
         let timeComponents = calendar.dateComponents([.hour, .minute], from: parsedTime)
-        var dayComponents = calendar.dateComponents([.year, .month, .day], from: Date())
+        var dayComponents = calendar.dateComponents([.year, .month, .day], from: date)
         dayComponents.hour = timeComponents.hour
         dayComponents.minute = timeComponents.minute
         return calendar.date(from: dayComponents)
+    }
+
+    private static func shortTitle(from title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "Chore"
+        }
+
+        guard trimmed.count > 18 else {
+            return trimmed
+        }
+
+        return String(trimmed.prefix(18)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func nextAllowanceDate(for weekday: AllowanceWeekday, after date: Date = Date()) -> Date {
@@ -1347,6 +1508,78 @@ final class AppStore: ObservableObject {
             note: note,
             parentId: parentId
         )
+    }
+
+    private func syncAllowanceSettings(_ settings: AllowanceSettings) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.updateFamilyAllowanceSettings(
+                familyId: settings.familyId,
+                settings: settings
+            )
+        } catch {
+            familySyncState = .failed("Allowance schedule saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
+    }
+
+    private func syncChore(
+        id: UUID,
+        title: String,
+        shortTitle: String,
+        deductionCents: Int,
+        dueTime: String,
+        occurrenceUpdates: [OccurrenceTimeUpdate]
+    ) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.updateChore(
+                id: id,
+                title: title,
+                shortTitle: shortTitle,
+                deductionCents: deductionCents,
+                dueTime: dueTime
+            )
+            for update in occurrenceUpdates {
+                _ = try await remoteStore.updateOccurrenceTiming(
+                    id: update.id,
+                    scheduledAt: update.scheduledAt,
+                    dueAt: update.dueAt,
+                    expiresAt: update.expiresAt
+                )
+            }
+        } catch {
+            familySyncState = .failed("Chore saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
+    }
+
+    private func syncBonusEntry(_ entry: LedgerEntry) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.createBonusLedgerEntry(
+                id: entry.id,
+                weekId: entry.weekId,
+                childId: childId,
+                createdBy: session.userId,
+                title: entry.title,
+                amountCents: entry.amountCents,
+                note: entry.note,
+                createdAt: entry.createdAt
+            )
+        } catch {
+            familySyncState = .failed("Bonus saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
     }
 
     private func queueRemoteParentDecision(
@@ -1577,6 +1810,7 @@ enum FamilySyncState: Equatable {
     case localPreview
     case loading
     case codeSent(phoneNumber: String)
+    case emailCodeSent(email: String)
     case needsBootstrap(String)
     case synced(String)
     case failed(String)
@@ -1589,6 +1823,8 @@ enum FamilySyncState: Equatable {
             return "Working on family sync..."
         case .codeSent(let phoneNumber):
             return "Code sent to \(phoneNumber)."
+        case .emailCodeSent(let email):
+            return "Code sent to \(email)."
         case .needsBootstrap(let message):
             return message
         case .synced(let message):
@@ -1626,13 +1862,24 @@ enum FamilySyncState: Equatable {
         return nil
     }
 
+    var codeEmail: String? {
+        if case .emailCodeSent(let email) = self {
+            return email
+        }
+        return nil
+    }
+
+    var hasPendingCode: Bool {
+        codePhoneNumber != nil || codeEmail != nil
+    }
+
     var iconName: String {
         switch self {
         case .localPreview:
             return "iphone"
         case .loading:
             return "arrow.triangle.2.circlepath"
-        case .codeSent:
+        case .codeSent, .emailCodeSent:
             return "message.badge"
         case .needsBootstrap:
             return "icloud.and.arrow.up"

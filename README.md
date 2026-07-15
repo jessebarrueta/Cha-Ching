@@ -37,12 +37,14 @@ Current display name: `ChaChing`
 - Task detail
 - Native camera JPEG evidence capture with a simulator-friendly mock fallback
 - Supabase Storage evidence upload and `review-evidence` AI review call with local fallback while auth is unfinished
-- Parent Family Sync card for phone OTP sign-in, remote family bootstrap, Supabase-backed family loading, and sign-out
+- Parent Family Sync card for email or phone OTP sign-in, remote family bootstrap, Supabase-backed family loading, and sign-out
 - Supabase-backed role routing from `family_members.role`
 - Supabase parent review decision RPC and app wiring for approve, reject, excuse, and retake actions
 - Remote family refresh on app foreground, toolbar refresh, and pull-to-refresh for parent/child state
+- Best-effort iOS background app refresh that pulls Supabase state, republishes the App Group widget snapshot, and refreshes local notification schedules
+- Supabase write-back for parent-created bonuses, chore title/deduction/time edits, and allowance schedule changes
 - Parent review queue actions
-- Local chore editing
+- Parent chore editing
 - Earnings/ledger overview
 - Static lock-screen and home-screen widget previews
 - Addable WidgetKit extension with Home Screen and Lock Screen allowance widgets backed by shared App Group state
@@ -77,6 +79,8 @@ group.com.artofsullivan.chaching
 
 The widget reads that shared snapshot and falls back to sample data if the group is unavailable. For TestFlight/device archives, make sure App Groups is enabled for both `com.artofsullivan.chaching` and `com.artofsullivan.chaching.widgets` in the Apple team.
 
+The main app also registers an iOS `BGAppRefreshTask` for `com.artofsullivan.chaching.refresh`. When iOS grants background time, the app refreshes remote family state, writes a new shared snapshot, asks WidgetKit to reload, and refreshes local notifications. This is best-effort background refresh, not a guaranteed polling interval.
+
 ## Verified
 
 ```sh
@@ -96,6 +100,12 @@ App/Networking/SupabaseClientProvider.swift
 ```
 
 The checked-in key is the Supabase publishable key, which is expected to be present in client apps. Do not commit the database password, service-role key, or OpenAI keys.
+
+### Auth
+
+Family Sync supports email OTP and phone OTP. Phone OTP requires a configured Supabase SMS provider before it can send codes; without one, Supabase returns an unsupported phone provider error. Email OTP is the easiest TestFlight path for now.
+
+For email OTP, update Supabase Auth templates so the email shows the one-time code. Add `{{ .Token }}` to both the Confirm Signup and Magic Link templates. Keep `{{ .ConfirmationURL }}` as a backup link if desired, but set the Auth Site URL away from localhost, for example `https://enormousbrain.com/cha-ching/`, and add any app/web callback URLs to the allowed redirect URLs list.
 
 ### Edge Function Secrets
 
@@ -139,11 +149,14 @@ supabase/migrations/0002_child_profiles_and_invites.sql
 supabase/migrations/0003_parent_invites.sql
 supabase/migrations/0004_family_bootstrap.sql
 supabase/migrations/0005_parent_review_decisions.sql
+supabase/migrations/0006_parent_settings_sync.sql
 ```
 
 `0004_family_bootstrap.sql` adds the `bootstrap_preview_family` RPC used by the parent Family Sync card. A signed-in parent can create the initial remote family, child profile, current week, starting allowance ledger entry, and preview chore schedule from the app.
 
 `0005_parent_review_decisions.sql` adds the `decide_chore_submission` RPC used by parent review actions. It updates the occurrence, parent decision metadata, and any related deduction ledger row in one server-side transaction.
+
+`0006_parent_settings_sync.sql` adds family allowance cadence, allowance weekday, and next allowance date columns so parent schedule changes can sync across devices.
 
 Evidence files should be stored under paths beginning with the family id:
 
@@ -202,12 +215,14 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
   -f supabase/migrations/0004_family_bootstrap.sql
 psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
   -f supabase/migrations/0005_parent_review_decisions.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0006_parent_settings_sync.sql
 ```
 
 ## Next Slices
 
-1. Sync bonuses, chore edits, and allowance settings back to Supabase instead of keeping those writes local after remote load.
-2. Smoke-test parent review sync across two TestFlight devices: parent reviews a task, child foregrounds or refreshes the app, and widgets update from the refreshed App Group snapshot.
+1. Apply `0006_parent_settings_sync.sql` to Supabase, then smoke-test parent-created bonuses, chore edits, and allowance schedule edits across two TestFlight devices.
+2. Smoke-test parent review sync across two TestFlight devices: parent reviews a task, child foregrounds or refreshes the app, and widgets update from the refreshed App Group snapshot. Also observe best-effort background refresh over time.
 3. Smoke-test auth-backed evidence upload and AI review on a physical phone against the remote family.
 4. Add family/chore evidence settings from `docs/privacy-and-evidence-roadmap.md`.
 5. Add on-device person/face blocking before evidence upload.

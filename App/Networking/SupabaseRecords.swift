@@ -4,6 +4,9 @@ struct FamilyRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let name: String
     let weeklyBaseAllowanceCents: Int
+    let allowanceCadence: String?
+    let allowanceWeekday: Int?
+    let nextAllowanceAt: Date?
     let createdAt: Date
     let updatedAt: Date
 
@@ -11,6 +14,9 @@ struct FamilyRecord: Codable, Identifiable, Sendable {
         case id
         case name
         case weeklyBaseAllowanceCents = "weekly_base_allowance_cents"
+        case allowanceCadence = "allowance_cadence"
+        case allowanceWeekday = "allowance_weekday"
+        case nextAllowanceAt = "next_allowance_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

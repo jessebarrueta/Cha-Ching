@@ -1,23 +1,105 @@
+import BackgroundTasks
 import SwiftUI
 
 @main
 struct ChaChingApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var store = AppStore()
+    @StateObject private var store: AppStore
+
+    init() {
+        let store = AppStore()
+        _store = StateObject(wrappedValue: store)
+        ChaChingBackgroundRefresh.shared.configure(store: store)
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(store)
                 .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active else {
-                        return
-                    }
-
-                    Task {
-                        await store.loadRemoteFamilyStateIfSignedIn()
+                    switch phase {
+                    case .active:
+                        Task {
+                            await store.loadRemoteFamilyStateIfSignedIn()
+                        }
+                    case .background:
+                        ChaChingBackgroundRefresh.shared.schedule()
+                    default:
+                        break
                     }
                 }
+        }
+    }
+}
+
+@MainActor
+private final class ChaChingBackgroundRefresh {
+    static let shared = ChaChingBackgroundRefresh()
+
+    private static let identifier = "com.artofsullivan.chaching.refresh"
+    private weak var store: AppStore?
+    private var didRegister = false
+
+    private init() {}
+
+    func configure(store: AppStore) {
+        self.store = store
+        register()
+    }
+
+    func schedule(after interval: TimeInterval = 15 * 60) {
+        guard store?.canAttemptRemoteRefresh == true else {
+            return
+        }
+
+        let request = BGAppRefreshTaskRequest(identifier: Self.identifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
+
+        do {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.identifier)
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            debugPrint("Unable to schedule background refresh: \(error)")
+        }
+    }
+
+    private func register() {
+        guard !didRegister else {
+            return
+        }
+
+        didRegister = BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.identifier, using: nil) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            Task { @MainActor in
+                self.handle(refreshTask)
+            }
+        }
+
+        if !didRegister {
+            debugPrint("Unable to register background refresh task.")
+        }
+    }
+
+    private func handle(_ task: BGAppRefreshTask) {
+        schedule(after: 30 * 60)
+
+        let refreshTask = Task { @MainActor in
+            guard let store, store.canAttemptRemoteRefresh else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            await store.loadRemoteFamilyStateIfSignedIn(force: true)
+            await store.refreshNotificationScheduleIfAuthorized()
+            task.setTaskCompleted(success: true)
+        }
+
+        task.expirationHandler = {
+            refreshTask.cancel()
         }
     }
 }

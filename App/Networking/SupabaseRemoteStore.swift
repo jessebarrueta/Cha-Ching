@@ -239,6 +239,112 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func updateFamilyAllowanceSettings(
+        familyId: UUID,
+        settings: AllowanceSettings
+    ) async throws -> FamilyRecord {
+        let payload = FamilyAllowanceSettingsUpdate(
+            weeklyBaseAllowanceCents: settings.baseAllowanceCents,
+            allowanceCadence: settings.cadence.rawValue,
+            allowanceWeekday: settings.allowanceWeekday.rawValue,
+            nextAllowanceAt: iso8601String(from: settings.nextAllowanceDate)
+        )
+
+        return try await client
+            .from("families")
+            .update(payload)
+            .eq("id", value: familyId.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateChore(
+        id: UUID,
+        title: String,
+        shortTitle: String,
+        deductionCents: Int,
+        dueTime: String
+    ) async throws -> ChoreDefinitionRecord {
+        let payload = ChoreDefinitionUpdate(
+            title: title,
+            shortTitle: shortTitle,
+            deductionCents: deductionCents,
+            recurrence: RecurrencePayload(
+                type: "daily",
+                times: [dueTime],
+                weekdays: nil,
+                rule: nil,
+                dueAt: nil
+            )
+        )
+
+        return try await client
+            .from("chore_definitions")
+            .update(payload)
+            .eq("id", value: id.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func updateOccurrenceTiming(
+        id: UUID,
+        scheduledAt: Date,
+        dueAt: Date,
+        expiresAt: Date
+    ) async throws -> TaskOccurrenceRecord {
+        let payload = TaskOccurrenceTimingUpdate(
+            scheduledAt: iso8601String(from: scheduledAt),
+            dueAt: iso8601String(from: dueAt),
+            expiresAt: iso8601String(from: expiresAt)
+        )
+
+        return try await client
+            .from("task_occurrences")
+            .update(payload)
+            .eq("id", value: id.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func createBonusLedgerEntry(
+        id: UUID,
+        weekId: UUID,
+        childId: UUID,
+        createdBy: UUID?,
+        title: String,
+        amountCents: Int,
+        note: String?,
+        createdAt: Date
+    ) async throws -> LedgerEntryRecord {
+        let payload = LedgerEntryInsert(
+            id: id,
+            weekId: weekId,
+            childId: childId,
+            createdBy: createdBy,
+            entryType: LedgerEntryType.bonus.rawValue,
+            title: title,
+            amountCents: amountCents,
+            relatedOccurrenceId: nil,
+            note: note,
+            isVoided: false,
+            createdAt: iso8601String(from: createdAt)
+        )
+
+        return try await client
+            .from("ledger_entries")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     func uploadEvidenceJPEG(
         familyId: UUID,
         occurrenceId: UUID,
@@ -436,6 +542,74 @@ private struct ParentInviteInsert: Encodable {
         case createdByParentId = "created_by_parent_id"
         case tokenHash = "token_hash"
         case expiresAt = "expires_at"
+    }
+}
+
+private struct FamilyAllowanceSettingsUpdate: Encodable {
+    let weeklyBaseAllowanceCents: Int
+    let allowanceCadence: String
+    let allowanceWeekday: Int
+    let nextAllowanceAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case weeklyBaseAllowanceCents = "weekly_base_allowance_cents"
+        case allowanceCadence = "allowance_cadence"
+        case allowanceWeekday = "allowance_weekday"
+        case nextAllowanceAt = "next_allowance_at"
+    }
+}
+
+private struct ChoreDefinitionUpdate: Encodable {
+    let title: String
+    let shortTitle: String
+    let deductionCents: Int
+    let recurrence: RecurrencePayload
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case shortTitle = "short_title"
+        case deductionCents = "deduction_cents"
+        case recurrence
+    }
+}
+
+private struct TaskOccurrenceTimingUpdate: Encodable {
+    let scheduledAt: String
+    let dueAt: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case scheduledAt = "scheduled_at"
+        case dueAt = "due_at"
+        case expiresAt = "expires_at"
+    }
+}
+
+private struct LedgerEntryInsert: Encodable {
+    let id: UUID
+    let weekId: UUID
+    let childId: UUID
+    let createdBy: UUID?
+    let entryType: String
+    let title: String
+    let amountCents: Int
+    let relatedOccurrenceId: UUID?
+    let note: String?
+    let isVoided: Bool
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case weekId = "week_id"
+        case childId = "child_id"
+        case createdBy = "created_by"
+        case entryType = "entry_type"
+        case title
+        case amountCents = "amount_cents"
+        case relatedOccurrenceId = "related_occurrence_id"
+        case note
+        case isVoided = "is_voided"
+        case createdAt = "created_at"
     }
 }
 

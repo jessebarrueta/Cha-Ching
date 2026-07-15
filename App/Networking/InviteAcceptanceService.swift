@@ -4,6 +4,8 @@ import Supabase
 protocol InviteAcceptanceServicing: Sendable {
     func requestSMSCode(phoneNumber: String) async throws
     func verifySMSCode(phoneNumber: String, code: String) async throws -> UUID
+    func requestEmailCode(email: String) async throws
+    func verifyEmailCode(email: String, code: String) async throws -> UUID
     func acceptChildInvite(token: String) async throws -> AcceptedChildInvite
     func acceptParentInvite(token: String) async throws -> AcceptedParentInvite
 }
@@ -30,6 +32,49 @@ struct SupabaseInviteAcceptanceService: InviteAcceptanceServicing {
         }
 
         return response.user.id
+    }
+
+    func requestEmailCode(email: String) async throws {
+        try await client.auth.signInWithOTP(
+            email: email,
+            shouldCreateUser: true
+        )
+    }
+
+    func verifyEmailCode(email: String, code: String) async throws -> UUID {
+        let response = try await verifyEmailCode(
+            email: email,
+            code: code,
+            allowedTypes: [.email, .signup, .magiclink]
+        )
+
+        if let session = response.session {
+            client.functions.setAuth(token: session.accessToken)
+        }
+
+        return response.user.id
+    }
+
+    private func verifyEmailCode(
+        email: String,
+        code: String,
+        allowedTypes: [EmailOTPType]
+    ) async throws -> AuthResponse {
+        var lastError: Error?
+
+        for type in allowedTypes {
+            do {
+                return try await client.auth.verifyOTP(
+                    email: email,
+                    token: code,
+                    type: type
+                )
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError ?? InviteAcceptanceError.invalidCode
     }
 
     func acceptChildInvite(token: String) async throws -> AcceptedChildInvite {
@@ -86,6 +131,7 @@ struct AcceptedParentInvite: Decodable, Equatable, Sendable {
 enum InviteAcceptanceError: LocalizedError {
     case missingInvite
     case invalidPhoneNumber
+    case invalidEmail
     case invalidCode
     case missingAuthenticatedSession
 
@@ -95,8 +141,10 @@ enum InviteAcceptanceError: LocalizedError {
             return "Open the invite link again."
         case .invalidPhoneNumber:
             return "Enter a 10-digit US number or a number starting with +."
+        case .invalidEmail:
+            return "Enter a valid email address."
         case .invalidCode:
-            return "Enter the code from the text message."
+            return "Enter the one-time code."
         case .missingAuthenticatedSession:
             return "Sign in before accepting the invite."
         }

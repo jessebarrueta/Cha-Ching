@@ -1,6 +1,6 @@
 import Foundation
 
-public enum FamilyMemberRole: String, Codable, CaseIterable, Identifiable {
+public enum FamilyMemberRole: String, Codable, CaseIterable, Identifiable, Sendable {
     case parent
     case child
 
@@ -16,7 +16,7 @@ public enum FamilyMemberRole: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct FamilyMember: Identifiable, Codable, Equatable {
+public struct FamilyMember: Identifiable, Codable, Equatable, Sendable {
     public var familyId: UUID
     public var userId: UUID
     public var role: FamilyMemberRole
@@ -40,7 +40,7 @@ public struct FamilyMember: Identifiable, Codable, Equatable {
     }
 }
 
-public struct ChildProfile: Identifiable, Codable, Equatable {
+public struct ChildProfile: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var familyId: UUID
     public var displayName: String
@@ -71,7 +71,7 @@ public struct ChildProfile: Identifiable, Codable, Equatable {
     }
 }
 
-public enum ChildInviteStatus: String, Codable, CaseIterable, Identifiable {
+public enum ChildInviteStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case pending
     case accepted
     case expired
@@ -93,7 +93,7 @@ public enum ChildInviteStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct ChildInvite: Identifiable, Codable, Equatable {
+public struct ChildInvite: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var familyId: UUID
     public var childProfileId: UUID
@@ -147,7 +147,7 @@ public struct ChildInvite: Identifiable, Codable, Equatable {
     }
 }
 
-public enum ParentInviteStatus: String, Codable, CaseIterable, Identifiable {
+public enum ParentInviteStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case pending
     case accepted
     case expired
@@ -169,7 +169,7 @@ public enum ParentInviteStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct ParentInvite: Identifiable, Codable, Equatable {
+public struct ParentInvite: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var familyId: UUID
     public var parentName: String
@@ -220,7 +220,7 @@ public struct ParentInvite: Identifiable, Codable, Equatable {
     }
 }
 
-public enum LedgerEntryType: String, Codable, CaseIterable, Identifiable {
+public enum LedgerEntryType: String, Codable, CaseIterable, Identifiable, Sendable {
     case weeklyBase = "weekly_base"
     case deduction
     case bonus
@@ -229,7 +229,7 @@ public enum LedgerEntryType: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
-public enum AllowanceCadence: String, Codable, CaseIterable, Identifiable {
+public enum AllowanceCadence: String, Codable, CaseIterable, Identifiable, Sendable {
     case weekly
     case everyTwoWeeks = "every_two_weeks"
 
@@ -263,7 +263,7 @@ public enum AllowanceCadence: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public enum AllowanceWeekday: Int, Codable, CaseIterable, Identifiable {
+public enum AllowanceWeekday: Int, Codable, CaseIterable, Identifiable, Sendable {
     case sunday = 1
     case monday
     case tuesday
@@ -294,7 +294,7 @@ public enum AllowanceWeekday: Int, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct AllowanceSettings: Codable, Equatable {
+public struct AllowanceSettings: Codable, Equatable, Sendable {
     public var familyId: UUID
     public var baseAllowanceCents: Int
     public var cadence: AllowanceCadence
@@ -351,7 +351,7 @@ public struct AllowanceSettings: Codable, Equatable {
     }
 }
 
-public struct LedgerEntry: Identifiable, Codable, Equatable {
+public struct LedgerEntry: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var weekId: UUID
     public var type: LedgerEntryType
@@ -385,7 +385,7 @@ public struct LedgerEntry: Identifiable, Codable, Equatable {
     }
 }
 
-public enum TaskOccurrenceStatus: String, Codable, CaseIterable, Identifiable {
+public enum TaskOccurrenceStatus: String, Codable, CaseIterable, Identifiable, Sendable {
     case upcoming
     case due
     case submitted
@@ -416,7 +416,7 @@ public enum TaskOccurrenceStatus: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public enum VerificationMode: String, Codable, CaseIterable, Identifiable {
+public enum VerificationMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case photoRequired = "photo_required"
     case photoOptional = "photo_optional"
     case parentOnly = "parent_only"
@@ -425,7 +425,7 @@ public enum VerificationMode: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
-public struct ChoreDefinition: Identifiable, Codable, Equatable {
+public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var familyId: UUID
     public var childId: UUID
@@ -480,7 +480,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable {
     }
 }
 
-public struct TaskOccurrence: Identifiable, Codable, Equatable {
+public struct TaskOccurrence: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var choreDefinitionId: UUID
     public var childId: UUID
@@ -526,7 +526,7 @@ public struct TaskOccurrence: Identifiable, Codable, Equatable {
     }
 }
 
-public struct AIReviewResult: Codable, Equatable {
+public struct AIReviewResult: Codable, Equatable, Sendable {
     public var completed: Bool?
     public var confidence: Double
     public var reason: String
@@ -554,7 +554,7 @@ public struct AIReviewResult: Codable, Equatable {
     }
 }
 
-public struct ChoreSubmission: Identifiable, Codable, Equatable {
+public struct ChoreSubmission: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var taskOccurrenceId: UUID
     public var childId: UUID
@@ -582,7 +582,7 @@ public struct ChoreSubmission: Identifiable, Codable, Equatable {
     }
 }
 
-public struct ParentDecision: Codable, Equatable {
+public struct ParentDecision: Codable, Equatable, Sendable {
     public enum Decision: String, Codable, Sendable {
         case approved
         case rejected
@@ -603,7 +603,7 @@ public struct ParentDecision: Codable, Equatable {
     }
 }
 
-public struct SeedSnapshot {
+public struct SeedSnapshot: Sendable {
     public var familyId: UUID
     public var parentId: UUID
     public var childId: UUID
