@@ -14,13 +14,17 @@ struct ParentWorkspaceView: View {
             .padding(.horizontal, 22)
             .padding(.vertical, 12)
 
-            if selectedTab == .review {
+            ZStack {
                 ParentReviewQueueView()
-            } else if selectedTab == .chores {
+                    .visibleParentSection(selectedTab == .review)
+
                 ChoreManagementView()
-            } else {
+                    .visibleParentSection(selectedTab == .chores)
+
                 FamilyManagementView()
+                    .visibleParentSection(selectedTab == .family)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.paperWhite.ignoresSafeArea())
         .navigationTitle("Parent")
@@ -32,6 +36,14 @@ struct ParentWorkspaceView: View {
             }
             #endif
         }
+    }
+}
+
+private extension View {
+    func visibleParentSection(_ isVisible: Bool) -> some View {
+        opacity(isVisible ? 1 : 0)
+            .allowsHitTesting(isVisible)
+            .accessibilityHidden(!isVisible)
     }
 }
 
