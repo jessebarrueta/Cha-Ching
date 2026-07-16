@@ -1,3 +1,6 @@
+import AuthenticationServices
+import CryptoKit
+import Security
 import SwiftUI
 
 struct ParentWorkspaceView: View {
@@ -326,10 +329,10 @@ struct ChoreManagementView: View {
 
 struct FamilyManagementView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var childName = "Zoe"
-    @State private var phoneNumber = ""
-    @State private var parentName = "Mamma"
-    @State private var parentPhoneNumber = ""
+    @SceneStorage("chaching.family.childNameDraft") private var childName = "Zoe"
+    @SceneStorage("chaching.family.childPhoneDraft") private var phoneNumber = ""
+    @SceneStorage("chaching.family.parentNameDraft") private var parentName = "Mamma"
+    @SceneStorage("chaching.family.parentPhoneDraft") private var parentPhoneNumber = ""
 
     var body: some View {
         ScrollView {
@@ -467,12 +470,25 @@ struct FamilyManagementView: View {
 
 struct FamilySyncCard: View {
     @EnvironmentObject private var store: AppStore
-    @State private var signInMethod: FamilySyncSignInMethod = .email
-    @State private var email = ""
-    @State private var phoneNumber = ""
-    @State private var oneTimeCode = ""
-    @State private var bootstrapParentName = "Daddy"
-    @State private var bootstrapChildName = "Zoe"
+    @SceneStorage("chaching.familySync.signInMethod") private var signInMethodRawValue = FamilySyncSignInMethod.apple.rawValue
+    @SceneStorage("chaching.familySync.emailDraft") private var email = ""
+    @SceneStorage("chaching.familySync.phoneDraft") private var phoneNumber = ""
+    @SceneStorage("chaching.familySync.codeDraft") private var oneTimeCode = ""
+    @SceneStorage("chaching.familySync.bootstrapParentNameDraft") private var bootstrapParentName = "Daddy"
+    @SceneStorage("chaching.familySync.bootstrapChildNameDraft") private var bootstrapChildName = "Zoe"
+    @State private var appleSignInNonce: String?
+
+    private var signInMethod: FamilySyncSignInMethod {
+        FamilySyncSignInMethod(rawValue: signInMethodRawValue) ?? .email
+    }
+
+    private var signInMethodBinding: Binding<FamilySyncSignInMethod> {
+        Binding {
+            signInMethod
+        } set: { method in
+            signInMethodRawValue = method.rawValue
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -496,7 +512,7 @@ struct FamilySyncCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 12) {
-                Picker("Sign in method", selection: $signInMethod) {
+                Picker("Sign in method", selection: signInMethodBinding) {
                     ForEach(FamilySyncSignInMethod.allCases) { method in
                         Text(method.title).tag(method)
                     }
@@ -504,59 +520,81 @@ struct FamilySyncCard: View {
                 .pickerStyle(.segmented)
 
                 switch signInMethod {
-                case .email:
-                    TextField("Email address", text: $email)
-                        .textContentType(.emailAddress)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.body.weight(.semibold))
-                        .textFieldStyle(.roundedBorder)
-                case .phone:
-                    TextField("Phone number", text: $phoneNumber)
-                        .textContentType(.telephoneNumber)
-                        .keyboardType(.phonePad)
-                        .font(.body.weight(.semibold))
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                if store.familySyncState.hasPendingCode {
-                    TextField("One-time code", text: $oneTimeCode)
-                        .textContentType(.oneTimeCode)
-                        .keyboardType(.numberPad)
-                        .font(.body.weight(.semibold))
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        Task {
-                            await requestCode()
-                        }
-                    } label: {
-                        Label("Send Code", systemImage: signInMethod.iconName)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .foregroundStyle(Color.inkBlack)
-                            .background(Color.sunYellow.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                case .apple:
+                    SignInWithAppleButton(.continue) { request in
+                        let nonce = AppleSignInSupport.randomNonce()
+                        appleSignInNonce = nonce
+                        request.requestedScopes = [.fullName, .email]
+                        request.nonce = AppleSignInSupport.sha256(nonce)
+                    } onCompletion: { result in
+                        handleAppleSignIn(result)
                     }
-                    .buttonStyle(.plain)
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                    Button {
-                        Task {
-                            await verifyCode()
-                        }
-                    } label: {
-                        Label("Verify", systemImage: "checkmark.circle.fill")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .foregroundStyle(Color.paperWhite)
-                            .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Text("Uses Apple ID for family sync. Invites still decide whether this person joins as a parent or child.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.mutedGray)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .email, .phone:
+                    switch signInMethod {
+                    case .email:
+                        TextField("Email address", text: $email)
+                            .textContentType(.emailAddress)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+                    case .phone:
+                        TextField("Phone number", text: $phoneNumber)
+                            .textContentType(.telephoneNumber)
+                            .keyboardType(.phonePad)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+                    case .apple:
+                        EmptyView()
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!store.familySyncState.hasPendingCode)
+
+                    if store.familySyncState.hasPendingCode {
+                        TextField("One-time code", text: $oneTimeCode)
+                            .textContentType(.oneTimeCode)
+                            .keyboardType(.numberPad)
+                            .font(.body.weight(.semibold))
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            Task {
+                                await requestCode()
+                            }
+                        } label: {
+                            Label("Send Code", systemImage: signInMethod.iconName)
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .foregroundStyle(Color.inkBlack)
+                                .background(Color.sunYellow.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            Task {
+                                await verifyCode()
+                            }
+                        } label: {
+                            Label("Verify", systemImage: "checkmark.circle.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .foregroundStyle(Color.paperWhite)
+                                .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!store.familySyncState.hasPendingCode)
+                    }
                 }
 
                 if store.familySyncState.needsBootstrap {
@@ -630,6 +668,8 @@ struct FamilySyncCard: View {
             await store.requestFamilySyncEmailCode(email: email)
         case .phone:
             await store.requestFamilySyncCode(phoneNumber: phoneNumber)
+        case .apple:
+            break
         }
     }
 
@@ -645,11 +685,46 @@ struct FamilySyncCard: View {
                 phoneNumber: store.familySyncState.codePhoneNumber ?? phoneNumber,
                 code: oneTimeCode
             )
+        case .apple:
+            break
+        }
+    }
+
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let authorization):
+            do {
+                guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                    throw AppleSignInError.invalidCredential
+                }
+
+                let identityToken = try AppleSignInSupport.identityTokenString(from: credential)
+                let nonce = appleSignInNonce
+                let fullName = credential.fullName?.formatted()
+
+                Task {
+                    await store.signInWithApple(
+                        idToken: identityToken,
+                        nonce: nonce,
+                        fullName: fullName
+                    )
+                }
+            } catch {
+                store.failFamilySync(message: error.localizedDescription)
+            }
+        case .failure(let error):
+            if let authorizationError = error as? ASAuthorizationError,
+               authorizationError.code == .canceled {
+                return
+            }
+
+            store.failFamilySync(message: error.localizedDescription)
         }
     }
 }
 
 private enum FamilySyncSignInMethod: String, CaseIterable, Identifiable {
+    case apple
     case email
     case phone
 
@@ -657,6 +732,8 @@ private enum FamilySyncSignInMethod: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .apple:
+            return "Apple"
         case .email:
             return "Email"
         case .phone:
@@ -666,10 +743,72 @@ private enum FamilySyncSignInMethod: String, CaseIterable, Identifiable {
 
     var iconName: String {
         switch self {
+        case .apple:
+            return "apple.logo"
         case .email:
             return "envelope.fill"
         case .phone:
             return "message.fill"
+        }
+    }
+}
+
+private enum AppleSignInSupport {
+    private static let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+
+    static func randomNonce(length: Int = 32) -> String {
+        var result = ""
+        var remainingLength = length
+
+        while remainingLength > 0 {
+            var randomBytes = [UInt8](repeating: 0, count: 16)
+            let status = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+
+            guard status == errSecSuccess else {
+                return UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            }
+
+            for randomByte in randomBytes where remainingLength > 0 {
+                guard Int(randomByte) < charset.count else {
+                    continue
+                }
+
+                result.append(charset[Int(randomByte)])
+                remainingLength -= 1
+            }
+        }
+
+        return result
+    }
+
+    static func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        return hashedData.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func identityTokenString(from credential: ASAuthorizationAppleIDCredential) throws -> String {
+        guard
+            let identityToken = credential.identityToken,
+            let tokenString = String(data: identityToken, encoding: .utf8)
+        else {
+            throw AppleSignInError.missingIdentityToken
+        }
+
+        return tokenString
+    }
+}
+
+private enum AppleSignInError: LocalizedError {
+    case invalidCredential
+    case missingIdentityToken
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidCredential:
+            return "Apple did not return a usable sign-in credential."
+        case .missingIdentityToken:
+            return "Apple did not return a sign-in token."
         }
     }
 }

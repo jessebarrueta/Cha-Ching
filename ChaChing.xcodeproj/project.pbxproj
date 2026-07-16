@@ -309,6 +309,11 @@
 				TargetAttributes = {
 					D00D00000000000000000004 = {
 						CreatedOnToolsVersion = 26.6;
+						SystemCapabilities = {
+							com.apple.AppleSignIn = {
+								enabled = 1;
+							};
+						};
 					};
 					D00D0000000000000000006A = {
 						CreatedOnToolsVersion = 26.6;

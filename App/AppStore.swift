@@ -297,6 +297,25 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func signInWithApple(idToken: String, nonce: String?, fullName: String?) async {
+        familySyncState = .loading
+
+        do {
+            _ = try await inviteAcceptanceService.signInWithApple(
+                idToken: idToken,
+                nonce: nonce,
+                fullName: fullName
+            )
+            await loadRemoteFamilyState()
+        } catch {
+            familySyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func failFamilySync(message: String) {
+        familySyncState = .failed(message)
+    }
+
     func bootstrapRemoteFamily(parentName: String, childName: String) async {
         familySyncState = .loading
 

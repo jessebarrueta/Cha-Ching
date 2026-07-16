@@ -6,6 +6,7 @@ protocol InviteAcceptanceServicing: Sendable {
     func verifySMSCode(phoneNumber: String, code: String) async throws -> UUID
     func requestEmailCode(email: String) async throws
     func verifyEmailCode(email: String, code: String) async throws -> UUID
+    func signInWithApple(idToken: String, nonce: String?, fullName: String?) async throws -> UUID
     func acceptChildInvite(token: String) async throws -> AcceptedChildInvite
     func acceptParentInvite(token: String) async throws -> AcceptedParentInvite
 }
@@ -53,6 +54,27 @@ struct SupabaseInviteAcceptanceService: InviteAcceptanceServicing {
         }
 
         return response.user.id
+    }
+
+    func signInWithApple(idToken: String, nonce: String?, fullName: String?) async throws -> UUID {
+        let session = try await client.auth.signInWithIdToken(
+            credentials: OpenIDConnectCredentials(
+                provider: .apple,
+                idToken: idToken,
+                nonce: nonce
+            )
+        )
+
+        client.functions.setAuth(token: session.accessToken)
+
+        let trimmedFullName = fullName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedFullName, !trimmedFullName.isEmpty {
+            _ = try? await client.auth.update(
+                user: UserAttributes(data: ["full_name": .string(trimmedFullName)])
+            )
+        }
+
+        return session.user.id
     }
 
     private func verifyEmailCode(
