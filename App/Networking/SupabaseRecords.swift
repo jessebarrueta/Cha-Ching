@@ -274,6 +274,32 @@ struct LedgerEntryRecord: Codable, Identifiable, Sendable {
     }
 }
 
+struct TaskNudgeRecord: Codable, Identifiable, Sendable {
+    let id: UUID
+    let familyId: UUID
+    let taskOccurrenceId: UUID
+    let childId: UUID
+    let createdBy: UUID
+    let message: String
+    let status: String
+    let deliveredAt: Date?
+    let dismissedAt: Date?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case taskOccurrenceId = "task_occurrence_id"
+        case childId = "child_id"
+        case createdBy = "created_by"
+        case message
+        case status
+        case deliveredAt = "delivered_at"
+        case dismissedAt = "dismissed_at"
+        case createdAt = "created_at"
+    }
+}
+
 struct ChoreSubmissionRecord: Codable, Identifiable, Sendable {
     let id: UUID
     let taskOccurrenceId: UUID

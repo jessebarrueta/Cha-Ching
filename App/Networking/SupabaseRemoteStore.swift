@@ -145,6 +145,18 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func fetchPendingTaskNudges(familyId: UUID, childId: UUID) async throws -> [TaskNudgeRecord] {
+        try await client
+            .from("task_nudges")
+            .select()
+            .eq("family_id", value: familyId.uuidString)
+            .eq("child_id", value: childId.uuidString)
+            .eq("status", value: "pending")
+            .order("created_at")
+            .execute()
+            .value
+    }
+
     func bootstrapPreviewFamily(
         parentName: String,
         childName: String,
@@ -292,10 +304,47 @@ struct SupabaseRemoteStore: Sendable {
             .value
     }
 
+    func createChore(_ chore: ChoreDefinition) async throws -> ChoreDefinitionRecord {
+        let payload = ChoreDefinitionInsert(
+            id: chore.id,
+            familyId: chore.familyId,
+            childId: chore.childId,
+            title: chore.title,
+            shortTitle: chore.shortTitle,
+            description: chore.description,
+            instructions: chore.instructions,
+            expectedEvidence: chore.expectedEvidence,
+            deductionCents: chore.deductionCents,
+            verificationMode: chore.verificationMode.rawValue,
+            blockPeopleInPhotos: chore.blockPeopleInPhotos,
+            recurrence: RecurrencePayload(
+                type: "daily",
+                times: [chore.dueTime],
+                weekdays: nil,
+                rule: nil,
+                dueAt: nil
+            ),
+            dueWindowMinutes: chore.dueWindowMinutes,
+            reminderOffsetsMinutes: chore.reminderOffsetsMinutes,
+            isPaused: chore.isPaused
+        )
+
+        return try await client
+            .from("chore_definitions")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
     func updateChore(
         id: UUID,
         title: String,
         shortTitle: String,
+        description: String,
+        instructions: String,
+        expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
         verificationMode: VerificationMode,
@@ -304,6 +353,9 @@ struct SupabaseRemoteStore: Sendable {
         let payload = ChoreDefinitionUpdate(
             title: title,
             shortTitle: shortTitle,
+            description: description,
+            instructions: instructions,
+            expectedEvidence: expectedEvidence,
             deductionCents: deductionCents,
             verificationMode: verificationMode.rawValue,
             blockPeopleInPhotos: blockPeopleInPhotos,
@@ -320,6 +372,27 @@ struct SupabaseRemoteStore: Sendable {
             .from("chore_definitions")
             .update(payload)
             .eq("id", value: id.uuidString)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func createTaskOccurrence(_ occurrence: TaskOccurrence) async throws -> TaskOccurrenceRecord {
+        let payload = TaskOccurrenceInsert(
+            id: occurrence.id,
+            choreDefinitionId: occurrence.choreDefinitionId,
+            childId: occurrence.childId,
+            weekId: occurrence.weekId,
+            scheduledAt: iso8601String(from: occurrence.scheduledAt),
+            dueAt: iso8601String(from: occurrence.dueAt),
+            expiresAt: iso8601String(from: occurrence.expiresAt),
+            status: occurrence.status.rawValue
+        )
+
+        return try await client
+            .from("task_occurrences")
+            .insert(payload)
             .select()
             .single()
             .execute()
@@ -375,6 +448,50 @@ struct SupabaseRemoteStore: Sendable {
         return try await client
             .from("ledger_entries")
             .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func createTaskNudge(
+        id: UUID = UUID(),
+        familyId: UUID,
+        occurrenceId: UUID,
+        childId: UUID,
+        createdBy: UUID,
+        message: String,
+        createdAt: Date = Date()
+    ) async throws -> TaskNudgeRecord {
+        let payload = TaskNudgeInsert(
+            id: id,
+            familyId: familyId,
+            taskOccurrenceId: occurrenceId,
+            childId: childId,
+            createdBy: createdBy,
+            message: message,
+            createdAt: iso8601String(from: createdAt)
+        )
+
+        return try await client
+            .from("task_nudges")
+            .insert(payload)
+            .select()
+            .single()
+            .execute()
+            .value
+    }
+
+    func markTaskNudgeDelivered(id: UUID, deliveredAt: Date = Date()) async throws -> TaskNudgeRecord {
+        let payload = TaskNudgeDeliveryUpdate(
+            status: "delivered",
+            deliveredAt: iso8601String(from: deliveredAt)
+        )
+
+        return try await client
+            .from("task_nudges")
+            .update(payload)
+            .eq("id", value: id.uuidString)
             .select()
             .single()
             .execute()
@@ -637,6 +754,9 @@ private struct FamilyEvidencePolicyUpsert: Encodable {
 private struct ChoreDefinitionUpdate: Encodable {
     let title: String
     let shortTitle: String
+    let description: String
+    let instructions: String
+    let expectedEvidence: String
     let deductionCents: Int
     let verificationMode: String
     let blockPeopleInPhotos: Bool?
@@ -645,10 +765,71 @@ private struct ChoreDefinitionUpdate: Encodable {
     enum CodingKeys: String, CodingKey {
         case title
         case shortTitle = "short_title"
+        case description
+        case instructions
+        case expectedEvidence = "expected_evidence"
         case deductionCents = "deduction_cents"
         case verificationMode = "verification_mode"
         case blockPeopleInPhotos = "block_people_in_photos"
         case recurrence
+    }
+}
+
+private struct ChoreDefinitionInsert: Encodable {
+    let id: UUID
+    let familyId: UUID
+    let childId: UUID
+    let title: String
+    let shortTitle: String
+    let description: String
+    let instructions: String
+    let expectedEvidence: String
+    let deductionCents: Int
+    let verificationMode: String
+    let blockPeopleInPhotos: Bool?
+    let recurrence: RecurrencePayload
+    let dueWindowMinutes: Int
+    let reminderOffsetsMinutes: [Int]
+    let isPaused: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case childId = "child_id"
+        case title
+        case shortTitle = "short_title"
+        case description
+        case instructions
+        case expectedEvidence = "expected_evidence"
+        case deductionCents = "deduction_cents"
+        case verificationMode = "verification_mode"
+        case blockPeopleInPhotos = "block_people_in_photos"
+        case recurrence
+        case dueWindowMinutes = "due_window_minutes"
+        case reminderOffsetsMinutes = "reminder_offsets_minutes"
+        case isPaused = "is_paused"
+    }
+}
+
+private struct TaskOccurrenceInsert: Encodable {
+    let id: UUID
+    let choreDefinitionId: UUID
+    let childId: UUID
+    let weekId: UUID
+    let scheduledAt: String
+    let dueAt: String
+    let expiresAt: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case choreDefinitionId = "chore_definition_id"
+        case childId = "child_id"
+        case weekId = "week_id"
+        case scheduledAt = "scheduled_at"
+        case dueAt = "due_at"
+        case expiresAt = "expires_at"
+        case status
     }
 }
 
@@ -689,6 +870,36 @@ private struct LedgerEntryInsert: Encodable {
         case note
         case isVoided = "is_voided"
         case createdAt = "created_at"
+    }
+}
+
+private struct TaskNudgeInsert: Encodable {
+    let id: UUID
+    let familyId: UUID
+    let taskOccurrenceId: UUID
+    let childId: UUID
+    let createdBy: UUID
+    let message: String
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case familyId = "family_id"
+        case taskOccurrenceId = "task_occurrence_id"
+        case childId = "child_id"
+        case createdBy = "created_by"
+        case message
+        case createdAt = "created_at"
+    }
+}
+
+private struct TaskNudgeDeliveryUpdate: Encodable {
+    let status: String
+    let deliveredAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case deliveredAt = "delivered_at"
     }
 }
 

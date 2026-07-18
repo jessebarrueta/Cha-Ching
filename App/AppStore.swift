@@ -35,6 +35,7 @@ final class AppStore: ObservableObject {
     private let remoteStore: SupabaseRemoteStore
     private let settingsStore: UserDefaults
     private let allowanceSettingsKey = "chaching.allowanceSettings"
+    private let deliveredNudgeIdsKey = "chaching.deliveredNudgeIds"
     private var lastAutomaticRemoteRefreshAt: Date?
 
     @Published private(set) var familyId: UUID
@@ -751,6 +752,35 @@ final class AppStore: ObservableObject {
         publishWidgetSnapshot()
     }
 
+    func sendNudge(for occurrence: TaskOccurrence) async {
+        guard occurrence.status.isOpen else {
+            return
+        }
+
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            familySyncState = .failed("Sign in before sending a nudge.")
+            return
+        }
+
+        let chore = chore(for: occurrence)
+        let dueTime = Self.widgetTimeFormatter.string(from: occurrence.dueAt)
+        let message = "\(chore.shortTitle) is still waiting. Due \(dueTime)."
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.createTaskNudge(
+                familyId: familyId,
+                occurrenceId: occurrence.id,
+                childId: occurrence.childId,
+                createdBy: session.userId,
+                message: message
+            )
+            familySyncState = .synced("Nudge sent for \(chore.shortTitle).")
+        } catch {
+            familySyncState = .failed("Nudge did not send: \(error.localizedDescription)")
+        }
+    }
+
     func markMissed(_ occurrence: TaskOccurrence) {
         let chore = chore(for: occurrence)
         updateOccurrence(occurrence.id) { task in
@@ -946,6 +976,56 @@ final class AppStore: ObservableObject {
         try await center.add(allowanceRequest)
     }
 
+    private func processPendingTaskNudges(familyId: UUID, childId: UUID) async {
+        guard isChildSession else {
+            return
+        }
+
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+            return
+        }
+
+        do {
+            let nudges = try await remoteStore.fetchPendingTaskNudges(familyId: familyId, childId: childId)
+            var deliveredIds = deliveredNudgeIds()
+
+            for nudge in nudges where !deliveredIds.contains(nudge.id.uuidString) {
+                try await scheduleNudgeNotification(nudge)
+                deliveredIds.insert(nudge.id.uuidString)
+                saveDeliveredNudgeIds(deliveredIds)
+                _ = try? await remoteStore.markTaskNudgeDelivered(id: nudge.id)
+            }
+        } catch {
+            debugPrint("Unable to process task nudges:", error.localizedDescription)
+        }
+    }
+
+    private func scheduleNudgeNotification(_ nudge: TaskNudgeRecord) async throws {
+        let choreTitle = occurrences
+            .first { $0.id == nudge.taskOccurrenceId }
+            .flatMap { occurrence in chores.first { $0.id == occurrence.choreDefinitionId }?.shortTitle }
+
+        let content = UNMutableNotificationContent()
+        content.title = "\(parentName) sent a nudge"
+        content.body = choreTitle.map { "\($0): \(nudge.message)" } ?? nudge.message
+        content.sound = .default
+        content.userInfo = [
+            "kind": "task_nudge",
+            "nudge_id": nudge.id.uuidString,
+            "task_occurrence_id": nudge.taskOccurrenceId.uuidString
+        ]
+
+        let request = UNNotificationRequest(
+            identifier: nudgeNotificationIdentifier(nudgeId: nudge.id),
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        )
+
+        try await UNUserNotificationCenter.current().add(request)
+    }
+
     private func localNotificationIdentifiers() -> [String] {
         var identifiers = chores.flatMap { chore in
             chore.reminderOffsetsMinutes.map {
@@ -964,9 +1044,84 @@ final class AppStore: ObservableObject {
         "chaching.chore.\(choreId.uuidString).offset.\(offsetMinutes)"
     }
 
+    private func nudgeNotificationIdentifier(nudgeId: UUID) -> String {
+        "chaching.nudge.\(nudgeId.uuidString)"
+    }
+
+    private func deliveredNudgeIds() -> Set<String> {
+        Set(settingsStore.stringArray(forKey: deliveredNudgeIdsKey) ?? [])
+    }
+
+    private func saveDeliveredNudgeIds(_ ids: Set<String>) {
+        settingsStore.set(Array(ids), forKey: deliveredNudgeIdsKey)
+    }
+
+    func addChore(
+        title: String,
+        description: String,
+        instructions: String,
+        expectedEvidence: String,
+        deductionCents: Int,
+        dueTime: String,
+        verificationMode: VerificationMode,
+        blockPeopleInPhotos: Bool
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDueTime = dueTime.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            familySyncState = .failed("Add a chore title.")
+            return
+        }
+        guard let dueAt = Self.dateToday(for: trimmedDueTime) else {
+            familySyncState = .failed("Use a due time like 8:00 PM.")
+            return
+        }
+
+        let now = Date()
+        let dueWindowMinutes = 90
+        let chore = ChoreDefinition(
+            familyId: familyId,
+            childId: childId,
+            title: trimmedTitle,
+            shortTitle: Self.shortTitle(from: trimmedTitle),
+            description: Self.nonEmptyTrimmed(description, fallback: trimmedTitle),
+            instructions: Self.nonEmptyTrimmed(instructions, fallback: "Complete \(trimmedTitle)."),
+            expectedEvidence: Self.nonEmptyTrimmed(expectedEvidence, fallback: "A clear photo showing the completed chore."),
+            deductionCents: max(0, deductionCents),
+            verificationMode: verificationMode,
+            blockPeopleInPhotos: blockPeopleInPhotos,
+            dueTime: trimmedDueTime,
+            dueWindowMinutes: dueWindowMinutes
+        )
+        let occurrence = TaskOccurrence(
+            choreDefinitionId: chore.id,
+            childId: childId,
+            weekId: weekId,
+            scheduledAt: dueAt,
+            dueAt: dueAt,
+            expiresAt: Calendar.current.date(byAdding: .minute, value: dueWindowMinutes, to: dueAt) ?? dueAt,
+            status: dueAt <= now ? .due : .upcoming,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        chores.append(chore)
+        chores.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        occurrences.append(occurrence)
+        publishWidgetSnapshot()
+
+        Task {
+            await syncCreatedChore(chore, occurrence: occurrence)
+            await refreshNotificationScheduleIfAuthorized()
+        }
+    }
+
     func updateChore(
         _ chore: ChoreDefinition,
         title: String,
+        description: String,
+        instructions: String,
+        expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
         verificationMode: VerificationMode,
@@ -975,19 +1130,35 @@ final class AppStore: ObservableObject {
         guard let index = chores.firstIndex(where: { $0.id == chore.id }) else {
             return
         }
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDueTime = dueTime.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
+            familySyncState = .failed("Add a chore title.")
+            return
+        }
+        guard Self.dateToday(for: trimmedDueTime) != nil else {
+            familySyncState = .failed("Use a due time like 8:00 PM.")
+            return
+        }
 
         let choreId = chore.id
-        let shortTitle = Self.shortTitle(from: title)
+        let shortTitle = Self.shortTitle(from: trimmedTitle)
+        let trimmedDescription = Self.nonEmptyTrimmed(description, fallback: trimmedTitle)
+        let trimmedInstructions = Self.nonEmptyTrimmed(instructions, fallback: "Complete \(trimmedTitle).")
+        let trimmedExpectedEvidence = Self.nonEmptyTrimmed(expectedEvidence, fallback: "A clear photo showing the completed chore.")
         let occurrenceUpdates = occurrenceTimeUpdates(
             for: choreId,
-            dueTime: dueTime,
+            dueTime: trimmedDueTime,
             dueWindowMinutes: chore.dueWindowMinutes
         )
 
-        chores[index].title = title
+        chores[index].title = trimmedTitle
         chores[index].shortTitle = shortTitle
-        chores[index].deductionCents = deductionCents
-        chores[index].dueTime = dueTime
+        chores[index].description = trimmedDescription
+        chores[index].instructions = trimmedInstructions
+        chores[index].expectedEvidence = trimmedExpectedEvidence
+        chores[index].deductionCents = max(0, deductionCents)
+        chores[index].dueTime = trimmedDueTime
         chores[index].verificationMode = verificationMode
         chores[index].blockPeopleInPhotos = blockPeopleInPhotos
         chores[index].updatedAt = Date()
@@ -1009,10 +1180,13 @@ final class AppStore: ObservableObject {
         Task {
             await syncChore(
                 id: choreId,
-                title: title,
+                title: trimmedTitle,
                 shortTitle: shortTitle,
-                deductionCents: deductionCents,
-                dueTime: dueTime,
+                description: trimmedDescription,
+                instructions: trimmedInstructions,
+                expectedEvidence: trimmedExpectedEvidence,
+                deductionCents: max(0, deductionCents),
+                dueTime: trimmedDueTime,
                 verificationMode: verificationMode,
                 blockPeopleInPhotos: blockPeopleInPhotos,
                 occurrenceUpdates: occurrenceUpdates
@@ -1131,6 +1305,7 @@ final class AppStore: ObservableObject {
         }
 
         publishWidgetSnapshot()
+        await processPendingTaskNudges(familyId: familyRecord.id, childId: selectedChildProfile.id)
         await refreshNotificationScheduleIfAuthorized()
     }
 
@@ -1598,6 +1773,11 @@ final class AppStore: ObservableObject {
         return String(trimmed.prefix(18)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private static func nonEmptyTrimmed(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
     private static func nextAllowanceDate(for weekday: AllowanceWeekday, after date: Date = Date()) -> Date {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: date)
@@ -1699,6 +1879,9 @@ final class AppStore: ObservableObject {
         id: UUID,
         title: String,
         shortTitle: String,
+        description: String,
+        instructions: String,
+        expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
         verificationMode: VerificationMode,
@@ -1715,6 +1898,9 @@ final class AppStore: ObservableObject {
                 id: id,
                 title: title,
                 shortTitle: shortTitle,
+                description: description,
+                instructions: instructions,
+                expectedEvidence: expectedEvidence,
                 deductionCents: deductionCents,
                 dueTime: dueTime,
                 verificationMode: verificationMode,
@@ -1728,6 +1914,21 @@ final class AppStore: ObservableObject {
                     expiresAt: update.expiresAt
                 )
             }
+        } catch {
+            familySyncState = .failed("Chore saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
+    }
+
+    private func syncCreatedChore(_ chore: ChoreDefinition, occurrence: TaskOccurrence) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.createChore(chore)
+            _ = try await remoteStore.createTaskOccurrence(occurrence)
+            familySyncState = .synced("Chore saved across devices.")
         } catch {
             familySyncState = .failed("Chore saved on this phone, but did not sync: \(error.localizedDescription)")
         }

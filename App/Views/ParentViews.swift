@@ -75,7 +75,7 @@ struct ParentReviewQueueView: View {
     private var visibleOccurrences: [TaskOccurrence] {
         switch filter {
         case .all:
-            return store.occurrences.filter { $0.status.needsParentReview || $0.status == .approved || $0.status == .excused }
+            return store.occurrences
         case .pending:
             return store.pendingReviewOccurrences
         case .reviewed:
@@ -127,6 +127,7 @@ enum ReviewFilter: String, CaseIterable, Identifiable {
 
 struct ReviewCard: View {
     @EnvironmentObject private var store: AppStore
+    @State private var isSendingNudge = false
     var occurrence: TaskOccurrence
     var chore: ChoreDefinition
     var submission: ChoreSubmission?
@@ -176,6 +177,22 @@ struct ReviewCard: View {
                     }
                     SecondaryActionButton(title: "Retake", systemImage: "camera.rotate.fill", tint: .softGray) {
                         store.requestRetake(occurrence)
+                    }
+                }
+            } else if occurrence.status.isOpen {
+                SecondaryActionButton(
+                    title: isSendingNudge ? "Sending" : "Nudge",
+                    systemImage: "bell.badge.fill",
+                    tint: .sunYellow.opacity(0.7)
+                ) {
+                    guard !isSendingNudge else {
+                        return
+                    }
+
+                    isSendingNudge = true
+                    Task {
+                        await store.sendNudge(for: occurrence)
+                        isSendingNudge = false
                     }
                 }
             }
@@ -276,49 +293,74 @@ struct ReviewThumbnail: View {
 struct ChoreManagementView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedChore: ChoreDefinition?
+    @State private var isAddingChore = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Editable development seed chores")
-                    .font(.subheadline)
-                    .foregroundStyle(Color.mutedGray)
+                HStack {
+                    Text("Chores")
+                        .font(.title3.weight(.heavy))
 
-                ForEach(store.chores) { chore in
+                    Spacer()
+
                     Button {
-                        selectedChore = chore
+                        isAddingChore = true
                     } label: {
-                        HStack(spacing: 14) {
-                            Circle()
-                                .fill(chore.isPaused ? Color.softGray : Color.acidLime)
-                                .frame(width: 14, height: 14)
-
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(chore.title)
-                                    .font(.headline)
-                                    .foregroundStyle(Color.inkBlack)
-                                Text("\(chore.dueTime) · Miss it \(Money.dollars(-chore.deductionCents, signed: true))")
-                                    .font(.caption)
-                                    .foregroundStyle(Color.mutedGray)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Color.mutedGray)
-                        }
-                        .padding(16)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.softGray, lineWidth: 1)
-                        )
+                        Label("Add", systemImage: "plus.circle.fill")
+                            .font(.headline)
+                            .foregroundStyle(Color.inkBlack)
+                            .padding(.horizontal, 14)
+                            .frame(height: 40)
+                            .background(Color.sunYellow.opacity(0.72), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
+
+                if store.chores.isEmpty {
+                    ContentUnavailableView("No chores yet", systemImage: "checklist")
+                        .frame(minHeight: 240)
+                } else {
+                    ForEach(store.chores) { chore in
+                        Button {
+                            selectedChore = chore
+                        } label: {
+                            HStack(spacing: 14) {
+                                Circle()
+                                    .fill(chore.isPaused ? Color.softGray : Color.acidLime)
+                                    .frame(width: 14, height: 14)
+
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(chore.title)
+                                        .font(.headline)
+                                        .foregroundStyle(Color.inkBlack)
+                                    Text("\(chore.dueTime) · Miss it \(Money.dollars(-chore.deductionCents, signed: true))")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.mutedGray)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.mutedGray)
+                            }
+                            .padding(16)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(Color.softGray, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
             .padding(22)
+        }
+        .sheet(isPresented: $isAddingChore) {
+            EditChoreSheet(chore: nil)
+                .environmentObject(store)
         }
         .sheet(item: $selectedChore) { chore in
             EditChoreSheet(chore: chore)
@@ -1309,21 +1351,27 @@ struct ChildInviteCard: View {
 struct EditChoreSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
-    let chore: ChoreDefinition
+    let chore: ChoreDefinition?
 
     @State private var title: String
+    @State private var description: String
+    @State private var instructions: String
+    @State private var expectedEvidence: String
     @State private var deduction: String
     @State private var dueTime: String
     @State private var verificationMode: VerificationMode
     @State private var blockPeopleInPhotos: Bool
 
-    init(chore: ChoreDefinition) {
+    init(chore: ChoreDefinition?) {
         self.chore = chore
-        _title = State(initialValue: chore.title)
-        _deduction = State(initialValue: Money.dollars(chore.deductionCents).replacingOccurrences(of: "$", with: ""))
-        _dueTime = State(initialValue: chore.dueTime)
-        _verificationMode = State(initialValue: chore.verificationMode)
-        _blockPeopleInPhotos = State(initialValue: chore.blockPeopleInPhotos ?? true)
+        _title = State(initialValue: chore?.title ?? "")
+        _description = State(initialValue: chore?.description ?? "")
+        _instructions = State(initialValue: chore?.instructions ?? "")
+        _expectedEvidence = State(initialValue: chore?.expectedEvidence ?? "")
+        _deduction = State(initialValue: Money.dollars(chore?.deductionCents ?? 100).replacingOccurrences(of: "$", with: ""))
+        _dueTime = State(initialValue: chore?.dueTime ?? "8:00 PM")
+        _verificationMode = State(initialValue: chore?.verificationMode ?? .photoOptional)
+        _blockPeopleInPhotos = State(initialValue: chore?.blockPeopleInPhotos ?? true)
     }
 
     var body: some View {
@@ -1331,7 +1379,9 @@ struct EditChoreSheet: View {
             Form {
                 Section("Chore") {
                     TextField("Title", text: $title)
+                    TextField("Short note", text: $description)
                     TextField("Due time", text: $dueTime)
+                        .textInputAutocapitalization(.characters)
                     TextField("Deduction", text: $deduction)
                         .keyboardType(.decimalPad)
                 }
@@ -1345,11 +1395,21 @@ struct EditChoreSheet: View {
                         .disabled(verificationMode == .parentOnly || verificationMode == .noVerification)
                 }
                 Section("Instructions") {
-                    Text(chore.instructions)
-                        .foregroundStyle(.secondary)
+                    TextField("What to do", text: $instructions, axis: .vertical)
+                        .lineLimit(3...6)
+                    TextField("Photo guidance", text: $expectedEvidence, axis: .vertical)
+                        .lineLimit(2...4)
+                }
+
+                if !dueTimeLooksValid {
+                    Section {
+                        Label("Use a time like 8:00 PM.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.warmOrange)
+                    }
                 }
             }
-            .navigationTitle("Edit Chore")
+            .navigationTitle(chore == nil ? "Add Chore" : "Edit Chore")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -1358,20 +1418,59 @@ struct EditChoreSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if let cents = Money.cents(fromDollarString: deduction), !title.isEmpty {
+                        guard let cents = Money.cents(fromDollarString: deduction),
+                              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                              dueTimeLooksValid else {
+                            return
+                        }
+
+                        if let chore {
                             store.updateChore(
                                 chore,
                                 title: title,
+                                description: description,
+                                instructions: instructions,
+                                expectedEvidence: expectedEvidence,
                                 deductionCents: cents,
                                 dueTime: dueTime,
                                 verificationMode: verificationMode,
                                 blockPeopleInPhotos: blockPeopleInPhotos
                             )
-                            dismiss()
+                        } else {
+                            store.addChore(
+                                title: title,
+                                description: description,
+                                instructions: instructions,
+                                expectedEvidence: expectedEvidence,
+                                deductionCents: cents,
+                                dueTime: dueTime,
+                                verificationMode: verificationMode,
+                                blockPeopleInPhotos: blockPeopleInPhotos
+                            )
                         }
+                        dismiss()
                     }
+                    .disabled(saveDisabled)
                 }
             }
         }
     }
+
+    private var saveDisabled: Bool {
+        Money.cents(fromDollarString: deduction) == nil
+            || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !dueTimeLooksValid
+    }
+
+    private var dueTimeLooksValid: Bool {
+        Self.dueTimeFormatter.date(from: dueTime.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    }
+
+    private static let dueTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm a"
+        formatter.isLenient = true
+        return formatter
+    }()
 }
