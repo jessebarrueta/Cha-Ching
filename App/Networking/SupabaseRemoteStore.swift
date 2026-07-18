@@ -203,6 +203,28 @@ struct SupabaseRemoteStore: Sendable {
         return response
     }
 
+    func processTaskOccurrenceDeadlines(
+        familyId: UUID,
+        childProfileId: UUID
+    ) async throws -> ProcessTaskDeadlinesResponse {
+        let responses: [ProcessTaskDeadlinesResponse] = try await client
+            .rpc(
+                "process_task_occurrence_deadlines",
+                params: EnsureTaskOccurrencesParams(
+                    familyId: familyId,
+                    childProfileId: childProfileId
+                )
+            )
+            .execute()
+            .value
+
+        guard let response = responses.first else {
+            throw SupabaseRemoteStoreError.emptyTaskDeadlinesResponse
+        }
+
+        return response
+    }
+
     func upsertChildProfile(
         id: UUID,
         familyId: UUID,
@@ -661,6 +683,7 @@ struct SupabaseRemoteStore: Sendable {
 enum SupabaseRemoteStoreError: LocalizedError {
     case emptyBootstrapResponse
     case emptyTaskOccurrenceResponse
+    case emptyTaskDeadlinesResponse
     case emptyParentReviewDecisionResponse
     case emptyNoPhotoSubmissionResponse
 
@@ -670,6 +693,8 @@ enum SupabaseRemoteStoreError: LocalizedError {
             return "Supabase did not return a family after bootstrapping."
         case .emptyTaskOccurrenceResponse:
             return "Supabase did not return a task schedule after refreshing."
+        case .emptyTaskDeadlinesResponse:
+            return "Supabase did not return task deadline updates after refreshing."
         case .emptyParentReviewDecisionResponse:
             return "Supabase did not return the reviewed task."
         case .emptyNoPhotoSubmissionResponse:

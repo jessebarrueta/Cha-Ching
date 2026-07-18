@@ -413,6 +413,18 @@ struct EnsureTaskOccurrencesResponse: Decodable, Sendable {
     }
 }
 
+struct ProcessTaskDeadlinesResponse: Decodable, Sendable {
+    let markedDueCount: Int
+    let markedMissedCount: Int
+    let deductionCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case markedDueCount = "marked_due_count"
+        case markedMissedCount = "marked_missed_count"
+        case deductionCount = "deduction_count"
+    }
+}
+
 struct ParentReviewDecisionResponse: Decodable, Sendable {
     let occurrenceId: UUID
     let submissionId: UUID?

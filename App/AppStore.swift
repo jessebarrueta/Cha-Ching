@@ -783,16 +783,6 @@ final class AppStore: ObservableObject {
         }
     }
 
-    func markMissed(_ occurrence: TaskOccurrence) {
-        let chore = chore(for: occurrence)
-        updateOccurrence(occurrence.id) { task in
-            task.status = .missed
-            task.updatedAt = Date()
-        }
-        addDeductionIfNeeded(for: occurrence, chore: chore)
-        publishWidgetSnapshot()
-    }
-
     func addBonus(title: String, amountCents: Int, note: String?) {
         let entry = LedgerEntry(
             weekId: weekId,
@@ -1316,6 +1306,10 @@ final class AppStore: ObservableObject {
             throw FamilySyncError.missingChildProfile
         }
 
+        _ = try await remoteStore.processTaskOccurrenceDeadlines(
+            familyId: membership.familyId,
+            childProfileId: selectedChildProfile.id
+        )
         _ = try await remoteStore.ensureCurrentTaskOccurrences(
             familyId: membership.familyId,
             childProfileId: selectedChildProfile.id
