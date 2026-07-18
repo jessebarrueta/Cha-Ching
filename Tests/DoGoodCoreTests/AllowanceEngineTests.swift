@@ -127,4 +127,34 @@ final class AllowanceEngineTests: XCTestCase {
         XCTAssertEqual(components.month, 7)
         XCTAssertEqual(components.day, 17)
     }
+
+    func testDailyChoreOccursEveryDay() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 20)))
+        let saturday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 25)))
+
+        XCTAssertTrue(ChoreRecurrence.daily.occurs(on: monday, calendar: calendar))
+        XCTAssertTrue(ChoreRecurrence.daily.occurs(on: saturday, calendar: calendar))
+    }
+
+    func testWeeklyChoreOnlyOccursOnSelectedDays() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let monday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 20)))
+        let tuesday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 21)))
+        let recurrence = ChoreRecurrence(frequency: .weekly, weekdays: [.monday, .friday])
+
+        XCTAssertTrue(recurrence.occurs(on: monday, calendar: calendar))
+        XCTAssertFalse(recurrence.occurs(on: tuesday, calendar: calendar))
+        XCTAssertEqual(recurrence.summary, "Mon, Fri")
+    }
+
+    func testOneTimeChoreOnlyOccursOnScheduledDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let scheduled = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 7, day: 20, hour: 18)))
+        let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: scheduled))
+        let recurrence = ChoreRecurrence(frequency: .once, oneTimeDate: scheduled)
+
+        XCTAssertTrue(recurrence.occurs(on: scheduled, calendar: calendar))
+        XCTAssertFalse(recurrence.occurs(on: nextDay, calendar: calendar))
+    }
 }

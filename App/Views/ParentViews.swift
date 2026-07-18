@@ -334,7 +334,7 @@ struct ChoreManagementView: View {
                                     Text(chore.title)
                                         .font(.headline)
                                         .foregroundStyle(Color.inkBlack)
-                                    Text("\(chore.dueTime) · Miss it \(Money.dollars(-chore.deductionCents, signed: true))")
+                                    Text("\(chore.recurrence.summary) · \(chore.dueTime) · Miss it \(Money.dollars(-chore.deductionCents, signed: true))")
                                         .font(.caption)
                                         .foregroundStyle(Color.mutedGray)
                                 }
@@ -1358,7 +1358,10 @@ struct EditChoreSheet: View {
     @State private var instructions: String
     @State private var expectedEvidence: String
     @State private var deduction: String
-    @State private var dueTime: String
+    @State private var dueTime: Date
+    @State private var repeatFrequency: ChoreRepeatFrequency
+    @State private var weekdays: Set<ChoreWeekday>
+    @State private var oneTimeDate: Date
     @State private var verificationMode: VerificationMode
     @State private var blockPeopleInPhotos: Bool
 
@@ -1369,7 +1372,10 @@ struct EditChoreSheet: View {
         _instructions = State(initialValue: chore?.instructions ?? "")
         _expectedEvidence = State(initialValue: chore?.expectedEvidence ?? "")
         _deduction = State(initialValue: Money.dollars(chore?.deductionCents ?? 100).replacingOccurrences(of: "$", with: ""))
-        _dueTime = State(initialValue: chore?.dueTime ?? "8:00 PM")
+        _dueTime = State(initialValue: Self.dueTimeFormatter.date(from: chore?.dueTime ?? "8:00 PM") ?? Date())
+        _repeatFrequency = State(initialValue: chore?.recurrence.frequency ?? .daily)
+        _weekdays = State(initialValue: Set(chore?.recurrence.weekdays ?? [Self.currentWeekday]))
+        _oneTimeDate = State(initialValue: chore?.recurrence.oneTimeDate ?? Date())
         _verificationMode = State(initialValue: chore?.verificationMode ?? .photoOptional)
         _blockPeopleInPhotos = State(initialValue: chore?.blockPeopleInPhotos ?? true)
     }
@@ -1380,10 +1386,24 @@ struct EditChoreSheet: View {
                 Section("Chore") {
                     TextField("Title", text: $title)
                     TextField("Short note", text: $description)
-                    TextField("Due time", text: $dueTime)
-                        .textInputAutocapitalization(.characters)
                     TextField("Deduction", text: $deduction)
                         .keyboardType(.decimalPad)
+                }
+                Section("Schedule") {
+                    DatePicker("Time", selection: $dueTime, displayedComponents: .hourAndMinute)
+
+                    Picker("Repeat", selection: $repeatFrequency) {
+                        ForEach(ChoreRepeatFrequency.allCases) { frequency in
+                            Text(frequency.title).tag(frequency)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if repeatFrequency == .weekly {
+                        weekdayPicker
+                    } else if repeatFrequency == .once {
+                        DatePicker("Date", selection: $oneTimeDate, displayedComponents: .date)
+                    }
                 }
                 Section("Evidence") {
                     Picker("Proof", selection: $verificationMode) {
@@ -1401,9 +1421,9 @@ struct EditChoreSheet: View {
                         .lineLimit(2...4)
                 }
 
-                if !dueTimeLooksValid {
+                if repeatFrequency == .weekly && weekdays.isEmpty {
                     Section {
-                        Label("Use a time like 8:00 PM.", systemImage: "exclamationmark.triangle.fill")
+                        Label("Choose at least one day.", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.warmOrange)
                     }
@@ -1419,10 +1439,12 @@ struct EditChoreSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         guard let cents = Money.cents(fromDollarString: deduction),
-                              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                              dueTimeLooksValid else {
+                              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                             return
                         }
+
+                        let dueTimeLabel = Self.dueTimeFormatter.string(from: dueTime)
+                        let recurrence = selectedRecurrence
 
                         if let chore {
                             store.updateChore(
@@ -1432,7 +1454,8 @@ struct EditChoreSheet: View {
                                 instructions: instructions,
                                 expectedEvidence: expectedEvidence,
                                 deductionCents: cents,
-                                dueTime: dueTime,
+                                dueTime: dueTimeLabel,
+                                recurrence: recurrence,
                                 verificationMode: verificationMode,
                                 blockPeopleInPhotos: blockPeopleInPhotos
                             )
@@ -1443,7 +1466,8 @@ struct EditChoreSheet: View {
                                 instructions: instructions,
                                 expectedEvidence: expectedEvidence,
                                 deductionCents: cents,
-                                dueTime: dueTime,
+                                dueTime: dueTimeLabel,
+                                recurrence: recurrence,
                                 verificationMode: verificationMode,
                                 blockPeopleInPhotos: blockPeopleInPhotos
                             )
@@ -1459,11 +1483,56 @@ struct EditChoreSheet: View {
     private var saveDisabled: Bool {
         Money.cents(fromDollarString: deduction) == nil
             || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !dueTimeLooksValid
+            || (repeatFrequency == .weekly && weekdays.isEmpty)
     }
 
-    private var dueTimeLooksValid: Bool {
-        Self.dueTimeFormatter.date(from: dueTime.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    private var selectedRecurrence: ChoreRecurrence {
+        switch repeatFrequency {
+        case .once:
+            let scheduledDate = Calendar.current.date(
+                bySettingHour: Calendar.current.component(.hour, from: dueTime),
+                minute: Calendar.current.component(.minute, from: dueTime),
+                second: 0,
+                of: oneTimeDate
+            ) ?? oneTimeDate
+            return ChoreRecurrence(frequency: .once, oneTimeDate: scheduledDate)
+        case .daily:
+            return .daily
+        case .weekly:
+            return ChoreRecurrence(frequency: .weekly, weekdays: Array(weekdays))
+        }
+    }
+
+    private var weekdayPicker: some View {
+        HStack(spacing: 0) {
+            ForEach(ChoreWeekday.allCases) { weekday in
+                Button {
+                    if weekdays.contains(weekday) {
+                        weekdays.remove(weekday)
+                    } else {
+                        weekdays.insert(weekday)
+                    }
+                } label: {
+                    Text(String(weekday.title.prefix(1)))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.inkBlack)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(
+                            weekdays.contains(weekday) ? Color.acidLime : Color.softGray,
+                            in: Circle()
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(weekday.title)
+                .accessibilityAddTraits(weekdays.contains(weekday) ? .isSelected : [])
+            }
+        }
+        .frame(height: 40)
+    }
+
+    private static var currentWeekday: ChoreWeekday {
+        ChoreWeekday(rawValue: Calendar.current.component(.weekday, from: Date())) ?? .monday
     }
 
     private static let dueTimeFormatter: DateFormatter = {

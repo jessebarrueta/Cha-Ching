@@ -128,7 +128,9 @@ final class AppStore: ObservableObject {
     }
 
     var todayOccurrences: [TaskOccurrence] {
-        occurrences.sorted {
+        occurrences
+            .filter { Calendar.current.isDateInToday($0.dueAt) }
+            .sorted {
             if $0.status == $1.status {
                 return $0.dueAt < $1.dueAt
             }
@@ -137,7 +139,7 @@ final class AppStore: ObservableObject {
     }
 
     var remainingCount: Int {
-        occurrences.filter { $0.status == .upcoming || $0.status == .due }.count
+        todayOccurrences.filter { $0.status == .upcoming || $0.status == .due }.count
     }
 
     var pendingReviewOccurrences: [TaskOccurrence] {
@@ -145,7 +147,7 @@ final class AppStore: ObservableObject {
     }
 
     var nextDueOccurrence: TaskOccurrence? {
-        occurrences
+        todayOccurrences
             .filter { $0.status == .upcoming || $0.status == .due }
             .sorted { $0.dueAt < $1.dueAt }
             .first
@@ -924,13 +926,6 @@ final class AppStore: ObservableObject {
             }
 
             for offset in chore.reminderOffsetsMinutes {
-                guard let fireDate = Calendar.current.date(byAdding: .minute, value: -offset, to: dueDate) else {
-                    continue
-                }
-
-                var components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
-                components.second = 0
-
                 let content = UNMutableNotificationContent()
                 content.title = offset > 0 ? "Chore due soon" : "Chore due now"
                 content.body = offset > 0
@@ -938,13 +933,71 @@ final class AppStore: ObservableObject {
                     : "\(chore.title) is due now."
                 content.sound = .default
 
-                let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
-                let request = UNNotificationRequest(
-                    identifier: choreNotificationIdentifier(choreId: chore.id, offsetMinutes: offset),
-                    content: content,
-                    trigger: trigger
-                )
-                try await center.add(request)
+                switch chore.recurrence.frequency {
+                case .once:
+                    guard let scheduledDate = chore.recurrence.oneTimeDate,
+                          let dueAt = Self.date(onSameDayAs: scheduledDate, time: chore.dueTime),
+                          let fireDate = Calendar.current.date(byAdding: .minute, value: -offset, to: dueAt),
+                          fireDate > Date() else {
+                        continue
+                    }
+                    var components = Calendar.current.dateComponents(
+                        [.year, .month, .day, .hour, .minute],
+                        from: fireDate
+                    )
+                    components.second = 0
+                    let request = UNNotificationRequest(
+                        identifier: choreNotificationIdentifier(choreId: chore.id, offsetMinutes: offset),
+                        content: content,
+                        trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+                    )
+                    try await center.add(request)
+                case .daily:
+                    guard let fireDate = Calendar.current.date(byAdding: .minute, value: -offset, to: dueDate) else {
+                        continue
+                    }
+                    var components = Calendar.current.dateComponents([.hour, .minute], from: fireDate)
+                    components.second = 0
+                    let request = UNNotificationRequest(
+                        identifier: choreNotificationIdentifier(choreId: chore.id, offsetMinutes: offset),
+                        content: content,
+                        trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                    )
+                    try await center.add(request)
+                case .weekly:
+                    let timeComponents = Calendar.current.dateComponents([.hour, .minute], from: dueDate)
+                    for weekday in chore.recurrence.weekdays {
+                        var dueComponents = DateComponents()
+                        dueComponents.weekday = weekday.rawValue
+                        dueComponents.hour = timeComponents.hour
+                        dueComponents.minute = timeComponents.minute
+                        guard let referenceDate = Calendar.current.date(byAdding: .day, value: -7, to: Date()),
+                              let matchingDueDate = Calendar.current.nextDate(
+                                after: referenceDate,
+                                matching: dueComponents,
+                                matchingPolicy: .nextTime
+                              ),
+                              let fireDate = Calendar.current.date(
+                                byAdding: .minute,
+                                value: -offset,
+                                to: matchingDueDate
+                              ) else {
+                            continue
+                        }
+                        var components = Calendar.current.dateComponents([.weekday, .hour, .minute], from: fireDate)
+                        components.second = 0
+                        let request = UNNotificationRequest(
+                            identifier: choreNotificationIdentifier(
+                                choreId: chore.id,
+                                offsetMinutes: offset,
+                                weekday: weekday
+                            ),
+                            content: content,
+                            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                        )
+                        try await center.add(request)
+                    }
+                }
             }
         }
 
@@ -1028,8 +1081,15 @@ final class AppStore: ObservableObject {
 
     private func localNotificationIdentifiers() -> [String] {
         var identifiers = chores.flatMap { chore in
-            chore.reminderOffsetsMinutes.map {
-                choreNotificationIdentifier(choreId: chore.id, offsetMinutes: $0)
+            chore.reminderOffsetsMinutes.flatMap { offset in
+                [choreNotificationIdentifier(choreId: chore.id, offsetMinutes: offset)]
+                    + ChoreWeekday.allCases.map {
+                        choreNotificationIdentifier(
+                            choreId: chore.id,
+                            offsetMinutes: offset,
+                            weekday: $0
+                        )
+                    }
             }
         }
         identifiers.append(allowanceNotificationIdentifier)
@@ -1040,8 +1100,13 @@ final class AppStore: ObservableObject {
         "chaching.allowance.\(familyId.uuidString)"
     }
 
-    private func choreNotificationIdentifier(choreId: UUID, offsetMinutes: Int) -> String {
-        "chaching.chore.\(choreId.uuidString).offset.\(offsetMinutes)"
+    private func choreNotificationIdentifier(
+        choreId: UUID,
+        offsetMinutes: Int,
+        weekday: ChoreWeekday? = nil
+    ) -> String {
+        let weekdaySuffix = weekday.map { ".weekday.\($0.rawValue)" } ?? ""
+        return "chaching.chore.\(choreId.uuidString).offset.\(offsetMinutes)\(weekdaySuffix)"
     }
 
     private func nudgeNotificationIdentifier(nudgeId: UUID) -> String {
@@ -1063,6 +1128,7 @@ final class AppStore: ObservableObject {
         expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
+        recurrence: ChoreRecurrence,
         verificationMode: VerificationMode,
         blockPeopleInPhotos: Bool
     ) {
@@ -1090,10 +1156,11 @@ final class AppStore: ObservableObject {
             deductionCents: max(0, deductionCents),
             verificationMode: verificationMode,
             blockPeopleInPhotos: blockPeopleInPhotos,
+            recurrence: recurrence,
             dueTime: trimmedDueTime,
             dueWindowMinutes: dueWindowMinutes
         )
-        let occurrence = TaskOccurrence(
+        let occurrence: TaskOccurrence? = recurrence.occurs(on: now) ? TaskOccurrence(
             choreDefinitionId: chore.id,
             childId: childId,
             weekId: weekId,
@@ -1103,11 +1170,13 @@ final class AppStore: ObservableObject {
             status: dueAt <= now ? .due : .upcoming,
             createdAt: now,
             updatedAt: now
-        )
+        ) : nil
 
         chores.append(chore)
         chores.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        occurrences.append(occurrence)
+        if let occurrence {
+            occurrences.append(occurrence)
+        }
         publishWidgetSnapshot()
 
         Task {
@@ -1124,6 +1193,7 @@ final class AppStore: ObservableObject {
         expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
+        recurrence: ChoreRecurrence,
         verificationMode: VerificationMode,
         blockPeopleInPhotos: Bool
     ) {
@@ -1149,7 +1219,8 @@ final class AppStore: ObservableObject {
         let occurrenceUpdates = occurrenceTimeUpdates(
             for: choreId,
             dueTime: trimmedDueTime,
-            dueWindowMinutes: chore.dueWindowMinutes
+            dueWindowMinutes: chore.dueWindowMinutes,
+            recurrence: recurrence
         )
 
         chores[index].title = trimmedTitle
@@ -1158,6 +1229,7 @@ final class AppStore: ObservableObject {
         chores[index].instructions = trimmedInstructions
         chores[index].expectedEvidence = trimmedExpectedEvidence
         chores[index].deductionCents = max(0, deductionCents)
+        chores[index].recurrence = recurrence
         chores[index].dueTime = trimmedDueTime
         chores[index].verificationMode = verificationMode
         chores[index].blockPeopleInPhotos = blockPeopleInPhotos
@@ -1187,6 +1259,7 @@ final class AppStore: ObservableObject {
                 expectedEvidence: trimmedExpectedEvidence,
                 deductionCents: max(0, deductionCents),
                 dueTime: trimmedDueTime,
+                recurrence: recurrence,
                 verificationMode: verificationMode,
                 blockPeopleInPhotos: blockPeopleInPhotos,
                 occurrenceUpdates: occurrenceUpdates
@@ -1242,6 +1315,11 @@ final class AppStore: ObservableObject {
         ) else {
             throw FamilySyncError.missingChildProfile
         }
+
+        _ = try await remoteStore.ensureCurrentTaskOccurrences(
+            familyId: membership.familyId,
+            childProfileId: selectedChildProfile.id
+        )
 
         let weekRecords = try await remoteStore.fetchWeeks(
             familyId: membership.familyId,
@@ -1347,7 +1425,10 @@ final class AppStore: ObservableObject {
     }
 
     private func localChoreDefinition(from record: ChoreDefinitionRecord) -> ChoreDefinition {
-        ChoreDefinition(
+        let frequency = ChoreRepeatFrequency(rawValue: record.recurrence.type) ?? .daily
+        let weekdays = record.recurrence.weekdays?.compactMap(ChoreWeekday.init(rawValue:)) ?? []
+
+        return ChoreDefinition(
             id: record.id,
             familyId: record.familyId,
             childId: record.childId,
@@ -1361,6 +1442,11 @@ final class AppStore: ObservableObject {
             blockPeopleInPhotos: record.blockPeopleInPhotos,
             evidenceRetentionMode: record.evidenceRetentionMode.flatMap { EvidenceRetentionMode(rawValue: $0) },
             evidenceDeleteGraceMinutes: record.evidenceDeleteGraceMinutes,
+            recurrence: ChoreRecurrence(
+                frequency: frequency,
+                weekdays: weekdays,
+                oneTimeDate: record.recurrence.dueAt
+            ),
             dueTime: record.recurrence.times?.first ?? "8:00 PM",
             dueWindowMinutes: record.dueWindowMinutes,
             reminderOffsetsMinutes: record.reminderOffsetsMinutes,
@@ -1500,10 +1586,13 @@ final class AppStore: ObservableObject {
     private func occurrenceTimeUpdates(
         for choreId: UUID,
         dueTime: String,
-        dueWindowMinutes: Int
+        dueWindowMinutes: Int,
+        recurrence: ChoreRecurrence
     ) -> [OccurrenceTimeUpdate] {
         occurrences.compactMap { occurrence in
             guard occurrence.choreDefinitionId == choreId,
+                  occurrence.status.isOpen,
+                  recurrence.occurs(on: occurrence.dueAt),
                   let dueAt = Self.date(onSameDayAs: occurrence.dueAt, time: dueTime) else {
                 return nil
             }
@@ -1884,6 +1973,7 @@ final class AppStore: ObservableObject {
         expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
+        recurrence: ChoreRecurrence,
         verificationMode: VerificationMode,
         blockPeopleInPhotos: Bool,
         occurrenceUpdates: [OccurrenceTimeUpdate]
@@ -1903,6 +1993,7 @@ final class AppStore: ObservableObject {
                 expectedEvidence: expectedEvidence,
                 deductionCents: deductionCents,
                 dueTime: dueTime,
+                recurrence: recurrence,
                 verificationMode: verificationMode,
                 blockPeopleInPhotos: blockPeopleInPhotos
             )
@@ -1919,7 +2010,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func syncCreatedChore(_ chore: ChoreDefinition, occurrence: TaskOccurrence) async {
+    private func syncCreatedChore(_ chore: ChoreDefinition, occurrence: TaskOccurrence?) async {
         guard SupabaseClientProvider.shared.auth.currentSession != nil else {
             return
         }
@@ -1927,7 +2018,9 @@ final class AppStore: ObservableObject {
         do {
             _ = try await remoteStore.currentSession()
             _ = try await remoteStore.createChore(chore)
-            _ = try await remoteStore.createTaskOccurrence(occurrence)
+            if let occurrence {
+                _ = try await remoteStore.createTaskOccurrence(occurrence)
+            }
             familySyncState = .synced("Chore saved across devices.")
         } catch {
             familySyncState = .failed("Chore saved on this phone, but did not sync: \(error.localizedDescription)")

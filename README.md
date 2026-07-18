@@ -154,6 +154,8 @@ supabase/migrations/0004_family_bootstrap.sql
 supabase/migrations/0005_parent_review_decisions.sql
 supabase/migrations/0006_parent_settings_sync.sql
 supabase/migrations/0007_evidence_policy_settings.sql
+supabase/migrations/0008_task_nudges.sql
+supabase/migrations/0009_chore_recurrence.sql
 ```
 
 `0004_family_bootstrap.sql` adds the `bootstrap_preview_family` RPC used by the parent Family Sync card. A signed-in parent can create the initial remote family, child profile, current week, starting allowance ledger entry, and preview chore schedule from the app.
@@ -163,6 +165,10 @@ supabase/migrations/0007_evidence_policy_settings.sql
 `0006_parent_settings_sync.sql` adds family allowance cadence, allowance weekday, and next allowance date columns so parent schedule changes can sync across devices.
 
 `0007_evidence_policy_settings.sql` adds `family_evidence_policies`, per-chore evidence override columns, nullable submission images, and the `submit_chore_without_photo` RPC used by child no-photo submissions.
+
+`0008_task_nudges.sql` adds parent-created task nudges that child devices can surface as notifications after a remote refresh.
+
+`0009_chore_recurrence.sql` adds the idempotent `ensure_current_task_occurrences` RPC. It creates matching daily, weekly, or one-time chores for the family’s local day, opens the next allowance period when needed, and carries excess deductions into the next starting balance.
 
 Evidence files should be stored under paths beginning with the family id:
 
@@ -225,14 +231,18 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
   -f supabase/migrations/0006_parent_settings_sync.sql
 psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
   -f supabase/migrations/0007_evidence_policy_settings.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0008_task_nudges.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0009_chore_recurrence.sql
 ```
 
 ## Next Slices
 
-1. Apply `0007_evidence_policy_settings.sql` to Supabase, then smoke-test parent evidence settings and child no-photo submission from TestFlight.
-2. Smoke-test parent review sync across two TestFlight devices: parent reviews a task, child foregrounds or refreshes the app, and widgets update from the refreshed App Group snapshot. Also observe best-effort background refresh over time.
-3. Smoke-test auth-backed evidence upload and AI review on a physical phone against the remote family.
-4. Add on-device person/face blocking before evidence upload.
+1. Upload build 9 and smoke-test daily, weekly, and one-time chores across parent and child TestFlight devices.
+2. Smoke-test auth-backed evidence upload and AI review on a physical phone against the remote family.
+3. Add on-device person/face blocking before evidence upload.
+4. Add APNs-backed instant sync and parent-to-child nudges.
 5. Add evidence deletion scheduling after parent review, including the undo grace window and allowance-period cleanup backstop.
 6. Add nightly retention cleanup for stale evidence and expired invite tokens.
 7. Add realtime or push-triggered refresh so both parent phones and child phones converge without manually tapping Refresh.

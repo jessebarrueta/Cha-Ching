@@ -457,6 +457,107 @@ public enum EvidenceRetentionMode: String, Codable, CaseIterable, Identifiable, 
     }
 }
 
+public enum ChoreRepeatFrequency: String, Codable, CaseIterable, Hashable, Identifiable, Sendable {
+    case once
+    case daily
+    case weekly
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .once:
+            return "Once"
+        case .daily:
+            return "Daily"
+        case .weekly:
+            return "Weekly"
+        }
+    }
+}
+
+public enum ChoreWeekday: Int, Codable, CaseIterable, Hashable, Identifiable, Sendable {
+    case sunday = 1
+    case monday
+    case tuesday
+    case wednesday
+    case thursday
+    case friday
+    case saturday
+
+    public var id: Int { rawValue }
+
+    public var title: String {
+        switch self {
+        case .sunday:
+            return "Sunday"
+        case .monday:
+            return "Monday"
+        case .tuesday:
+            return "Tuesday"
+        case .wednesday:
+            return "Wednesday"
+        case .thursday:
+            return "Thursday"
+        case .friday:
+            return "Friday"
+        case .saturday:
+            return "Saturday"
+        }
+    }
+
+    public var shortTitle: String {
+        String(title.prefix(3))
+    }
+}
+
+public struct ChoreRecurrence: Codable, Equatable, Sendable {
+    public var frequency: ChoreRepeatFrequency
+    public var weekdays: [ChoreWeekday]
+    public var oneTimeDate: Date?
+
+    public init(
+        frequency: ChoreRepeatFrequency = .daily,
+        weekdays: [ChoreWeekday] = [],
+        oneTimeDate: Date? = nil
+    ) {
+        self.frequency = frequency
+        self.weekdays = Array(Set(weekdays)).sorted { $0.rawValue < $1.rawValue }
+        self.oneTimeDate = oneTimeDate
+    }
+
+    public static let daily = ChoreRecurrence(frequency: .daily)
+
+    public var summary: String {
+        switch frequency {
+        case .once:
+            return "Once"
+        case .daily:
+            return "Every day"
+        case .weekly:
+            if weekdays.count == ChoreWeekday.allCases.count {
+                return "Every day"
+            }
+            return weekdays.map(\.shortTitle).joined(separator: ", ")
+        }
+    }
+
+    public func occurs(on date: Date, calendar: Calendar = .current) -> Bool {
+        switch frequency {
+        case .once:
+            guard let oneTimeDate else {
+                return false
+            }
+            return calendar.isDate(oneTimeDate, inSameDayAs: date)
+        case .daily:
+            return true
+        case .weekly:
+            let weekday = calendar.component(.weekday, from: date)
+            return weekdays.contains { $0.rawValue == weekday }
+        }
+    }
+}
+
 public struct FamilyEvidencePolicy: Codable, Equatable, Sendable {
     public var familyId: UUID
     public var photoEvidenceEnabled: Bool
@@ -499,6 +600,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
     public var blockPeopleInPhotos: Bool?
     public var evidenceRetentionMode: EvidenceRetentionMode?
     public var evidenceDeleteGraceMinutes: Int?
+    public var recurrence: ChoreRecurrence
     public var dueTime: String
     public var dueWindowMinutes: Int
     public var reminderOffsetsMinutes: [Int]
@@ -520,6 +622,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
         blockPeopleInPhotos: Bool? = nil,
         evidenceRetentionMode: EvidenceRetentionMode? = nil,
         evidenceDeleteGraceMinutes: Int? = nil,
+        recurrence: ChoreRecurrence = .daily,
         dueTime: String,
         dueWindowMinutes: Int = 90,
         reminderOffsetsMinutes: [Int] = [15, 0],
@@ -540,6 +643,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
         self.blockPeopleInPhotos = blockPeopleInPhotos
         self.evidenceRetentionMode = evidenceRetentionMode
         self.evidenceDeleteGraceMinutes = evidenceDeleteGraceMinutes
+        self.recurrence = recurrence
         self.dueTime = dueTime
         self.dueWindowMinutes = dueWindowMinutes
         self.reminderOffsetsMinutes = reminderOffsetsMinutes

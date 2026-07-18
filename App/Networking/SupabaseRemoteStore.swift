@@ -181,6 +181,28 @@ struct SupabaseRemoteStore: Sendable {
         return response
     }
 
+    func ensureCurrentTaskOccurrences(
+        familyId: UUID,
+        childProfileId: UUID
+    ) async throws -> EnsureTaskOccurrencesResponse {
+        let responses: [EnsureTaskOccurrencesResponse] = try await client
+            .rpc(
+                "ensure_current_task_occurrences",
+                params: EnsureTaskOccurrencesParams(
+                    familyId: familyId,
+                    childProfileId: childProfileId
+                )
+            )
+            .execute()
+            .value
+
+        guard let response = responses.first else {
+            throw SupabaseRemoteStoreError.emptyTaskOccurrenceResponse
+        }
+
+        return response
+    }
+
     func upsertChildProfile(
         id: UUID,
         familyId: UUID,
@@ -317,13 +339,7 @@ struct SupabaseRemoteStore: Sendable {
             deductionCents: chore.deductionCents,
             verificationMode: chore.verificationMode.rawValue,
             blockPeopleInPhotos: chore.blockPeopleInPhotos,
-            recurrence: RecurrencePayload(
-                type: "daily",
-                times: [chore.dueTime],
-                weekdays: nil,
-                rule: nil,
-                dueAt: nil
-            ),
+            recurrence: recurrencePayload(for: chore),
             dueWindowMinutes: chore.dueWindowMinutes,
             reminderOffsetsMinutes: chore.reminderOffsetsMinutes,
             isPaused: chore.isPaused
@@ -347,6 +363,7 @@ struct SupabaseRemoteStore: Sendable {
         expectedEvidence: String,
         deductionCents: Int,
         dueTime: String,
+        recurrence: ChoreRecurrence,
         verificationMode: VerificationMode,
         blockPeopleInPhotos: Bool?
     ) async throws -> ChoreDefinitionRecord {
@@ -359,13 +376,7 @@ struct SupabaseRemoteStore: Sendable {
             deductionCents: deductionCents,
             verificationMode: verificationMode.rawValue,
             blockPeopleInPhotos: blockPeopleInPhotos,
-            recurrence: RecurrencePayload(
-                type: "daily",
-                times: [dueTime],
-                weekdays: nil,
-                rule: nil,
-                dueAt: nil
-            )
+            recurrence: recurrencePayload(for: recurrence, dueTime: dueTime)
         )
 
         return try await client
@@ -376,6 +387,23 @@ struct SupabaseRemoteStore: Sendable {
             .single()
             .execute()
             .value
+    }
+
+    private func recurrencePayload(for chore: ChoreDefinition) -> RecurrencePayload {
+        recurrencePayload(for: chore.recurrence, dueTime: chore.dueTime)
+    }
+
+    private func recurrencePayload(
+        for recurrence: ChoreRecurrence,
+        dueTime: String
+    ) -> RecurrencePayload {
+        RecurrencePayload(
+            type: recurrence.frequency.rawValue,
+            times: [dueTime],
+            weekdays: recurrence.frequency == .weekly ? recurrence.weekdays.map(\.rawValue) : nil,
+            rule: nil,
+            dueAt: recurrence.frequency == .once ? recurrence.oneTimeDate : nil
+        )
     }
 
     func createTaskOccurrence(_ occurrence: TaskOccurrence) async throws -> TaskOccurrenceRecord {
@@ -632,6 +660,7 @@ struct SupabaseRemoteStore: Sendable {
 
 enum SupabaseRemoteStoreError: LocalizedError {
     case emptyBootstrapResponse
+    case emptyTaskOccurrenceResponse
     case emptyParentReviewDecisionResponse
     case emptyNoPhotoSubmissionResponse
 
@@ -639,6 +668,8 @@ enum SupabaseRemoteStoreError: LocalizedError {
         switch self {
         case .emptyBootstrapResponse:
             return "Supabase did not return a family after bootstrapping."
+        case .emptyTaskOccurrenceResponse:
+            return "Supabase did not return a task schedule after refreshing."
         case .emptyParentReviewDecisionResponse:
             return "Supabase did not return the reviewed task."
         case .emptyNoPhotoSubmissionResponse:
@@ -656,6 +687,16 @@ private struct BootstrapFamilyParams: Encodable {
         case parentDisplayName = "parent_display_name"
         case childDisplayName = "child_display_name"
         case familyDisplayName = "family_display_name"
+    }
+}
+
+private struct EnsureTaskOccurrencesParams: Encodable {
+    let familyId: UUID
+    let childProfileId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case familyId = "target_family_id"
+        case childProfileId = "target_child_profile_id"
     }
 }
 

@@ -403,6 +403,16 @@ struct BootstrapFamilyResponse: Decodable, Sendable {
     }
 }
 
+struct EnsureTaskOccurrencesResponse: Decodable, Sendable {
+    let activeWeekId: UUID
+    let insertedCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case activeWeekId = "active_week_id"
+        case insertedCount = "inserted_count"
+    }
+}
+
 struct ParentReviewDecisionResponse: Decodable, Sendable {
     let occurrenceId: UUID
     let submissionId: UUID?
