@@ -204,6 +204,8 @@ struct CameraCaptureView: View {
     @State private var capturedImage: UIImage?
     @State private var isShowingCamera = false
     @State private var isSubmitting = false
+    @State private var isCheckingPhotoPrivacy = false
+    @State private var privacyAlert: PhotoPrivacyAlert?
 
     private var occurrence: TaskOccurrence? {
         store.occurrences.first { $0.id == occurrenceId }
@@ -211,6 +213,14 @@ struct CameraCaptureView: View {
 
     private var cameraAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
+
+    private var blocksPeopleInPhotos: Bool {
+        guard let occurrence else {
+            return false
+        }
+
+        return store.blocksPeopleInEvidence(for: store.chore(for: occurrence))
     }
 
     var body: some View {
@@ -232,9 +242,14 @@ struct CameraCaptureView: View {
                         if isSubmitting {
                             ZStack {
                                 Color.black.opacity(0.28)
-                                ProgressView()
-                                    .tint(Color.brandWhite)
-                                    .scaleEffect(1.4)
+                                VStack(spacing: 12) {
+                                    ProgressView()
+                                        .tint(Color.brandWhite)
+                                        .scaleEffect(1.4)
+                                    Text(isCheckingPhotoPrivacy ? "Checking photo privacy..." : "Submitting...")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Color.brandWhite)
+                                }
                             }
                         }
                     }
@@ -264,7 +279,11 @@ struct CameraCaptureView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "lightbulb.fill")
                             .foregroundStyle(Color.sunYellow)
-                        Text("Show the full task area clearly.")
+                        Text(
+                            blocksPeopleInPhotos
+                                ? "Show the task clearly and keep people out of frame."
+                                : "Show the full task area clearly."
+                        )
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.brandBlack)
                         Spacer()
@@ -291,6 +310,13 @@ struct CameraCaptureView: View {
                 }
             }
             .ignoresSafeArea()
+        }
+        .alert(item: $privacyAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("Try Again"))
+            )
         }
     }
 
@@ -368,9 +394,41 @@ struct CameraCaptureView: View {
 
     private func submitCapturedImage(_ image: UIImage?) async {
         isSubmitting = true
-        defer { isSubmitting = false }
+        defer {
+            isCheckingPhotoPrivacy = false
+            isSubmitting = false
+        }
 
-        let jpegData = image?.evidenceJPEGData()
+        guard let image else {
+            await store.submitEvidence(for: occurrenceId)
+            return
+        }
+
+        guard let jpegData = image.evidenceJPEGData() else {
+            capturedImage = nil
+            privacyAlert = .scanFailed
+            return
+        }
+
+        if blocksPeopleInPhotos {
+            isCheckingPhotoPrivacy = true
+
+            do {
+                let containsPerson = try await PhotoPrivacyScanner.containsPerson(in: jpegData)
+                guard !containsPerson else {
+                    capturedImage = nil
+                    privacyAlert = .personDetected
+                    return
+                }
+            } catch {
+                capturedImage = nil
+                privacyAlert = .scanFailed
+                return
+            }
+
+            isCheckingPhotoPrivacy = false
+        }
+
         await store.submitEvidence(for: occurrenceId, jpegData: jpegData)
     }
 
@@ -405,6 +463,22 @@ struct CameraCaptureView: View {
             }
         }
     }
+}
+
+private struct PhotoPrivacyAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+
+    static let personDetected = PhotoPrivacyAlert(
+        title: "Photo not uploaded",
+        message: "A person may be visible. This photo stayed on this phone. Try again with everyone out of frame."
+    )
+
+    static let scanFailed = PhotoPrivacyAlert(
+        title: "Photo check unavailable",
+        message: "We could not safely check this photo for people, so it was not uploaded. Please take another photo."
+    )
 }
 
 struct CameraImagePicker: UIViewControllerRepresentable {

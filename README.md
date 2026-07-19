@@ -50,6 +50,7 @@ Current display name: `ChaChing`
 - Addable WidgetKit extension with Home Screen and Lock Screen allowance widgets backed by shared App Group state
 - Parent allowance controls for the next period's amount and weekly or every-two-week cadence
 - Parent evidence privacy controls for family photo evidence, default verification mode, people blocking, retention mode, and cleanup windows
+- On-device Vision face and body checks that prevent protected evidence photos from uploading when a person may be visible
 - Per-chore proof settings for photo required, photo optional, parent review, or no proof
 - Child no-photo submission flow for chores that allow it
 - Local notification permission flow and scheduling for chore due times plus allowance day
@@ -176,6 +177,8 @@ supabase/migrations/0011_chore_lifecycle.sql
 
 `0011_chore_lifecycle.sql` adds archived chore state and the parent-only `set_chore_lifecycle` RPC. Pausing or archiving a chore excuses its open occurrences, stops future scheduling, and preserves completed task and allowance history.
 
+`0012_evidence_deletion_schedule.sql` adds evidence lifecycle metadata and updates parent review decisions to schedule photo deletion using the effective family/chore retention policy and undo grace window.
+
 Evidence files should be stored under paths beginning with the family id:
 
 ```text
@@ -245,18 +248,19 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
   -f supabase/migrations/0010_task_deadlines.sql
 psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
   -f supabase/migrations/0011_chore_lifecycle.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0012_evidence_deletion_schedule.sql
 ```
 
 ## Next Slices
 
 1. Upload build 11 and smoke-test pause, resume, archive, dark mode, and automatically missed chores across parent and child TestFlight devices.
-2. Smoke-test auth-backed evidence upload and AI review on a physical phone against the remote family.
-3. Add on-device person/face blocking before evidence upload.
-4. Add APNs-backed instant sync and parent-to-child nudges.
-5. Add evidence deletion scheduling after parent review, including the undo grace window and allowance-period cleanup backstop.
-6. Add nightly retention cleanup for stale evidence and expired invite tokens.
-7. Add realtime or push-triggered refresh so both parent phones and child phones converge without manually tapping Refresh.
-8. Persist notification preferences and rollover closeout state in Supabase once remote writes are live.
-9. Add a dedicated child allowance-day celebration screen surfaced from push/local notification and dashboard state.
-10. Add parent-facing allowance-period closeout review before a child message request is sent.
-11. Add Universal Links.
+2. Smoke-test auth-backed evidence upload, on-device people blocking, and AI review on a physical phone against the remote family.
+3. Add APNs-backed instant sync and parent-to-child nudges.
+4. Add the evidence deletion worker and allowance-period cleanup backstop.
+5. Add nightly retention cleanup for stale evidence and expired invite tokens.
+6. Add realtime or push-triggered refresh so both parent phones and child phones converge without manually tapping Refresh.
+7. Persist notification preferences and rollover closeout state in Supabase once remote writes are live.
+8. Add a dedicated child allowance-day celebration screen surfaced from push/local notification and dashboard state.
+9. Add parent-facing allowance-period closeout review before a child message request is sent.
+10. Add Universal Links.

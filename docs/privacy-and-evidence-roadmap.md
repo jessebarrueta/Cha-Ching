@@ -114,10 +114,10 @@ Done:
 - Best-effort iOS background app refresh that republishes the local widget snapshot after remote sync.
 - Family/chore evidence settings UI and schema.
 - Child no-photo submission flow for chores that allow it.
+- Evidence deletion scheduling in parent review actions, including chore overrides and the undo grace window.
 
 Next:
 
-1. On-device person/face blocking before upload.
-2. Evidence deletion scheduling in parent review actions.
-3. Nightly retention cleanup backstop.
-4. Realtime or push-triggered refresh for faster cross-device updates.
+1. Physical-device smoke test for on-device person/face blocking before upload.
+2. Evidence deletion worker and nightly retention cleanup backstop.
+3. Realtime or push-triggered refresh for faster cross-device updates.

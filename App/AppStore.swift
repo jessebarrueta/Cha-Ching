@@ -863,6 +863,11 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func blocksPeopleInEvidence(for chore: ChoreDefinition) -> Bool {
+        allowsPhotoEvidence(for: chore)
+            && (chore.blockPeopleInPhotos ?? evidencePolicy.blockPeopleInPhotos)
+    }
+
     func allowsNoPhotoSubmission(for chore: ChoreDefinition) -> Bool {
         guard evidencePolicy.photoEvidenceEnabled else {
             return true
