@@ -42,13 +42,13 @@ Current display name: `ChaChing`
 - Supabase parent review decision RPC and app wiring for approve, reject, excuse, and retake actions
 - Remote family refresh on app foreground, toolbar refresh, and pull-to-refresh for parent/child state
 - Best-effort iOS background app refresh that pulls Supabase state, republishes the App Group widget snapshot, and refreshes local notification schedules
-- Supabase write-back for parent-created bonuses, chore title/deduction/time edits, and allowance schedule changes
+- Supabase write-back for parent-created bonuses, chore title/deduction/time edits, and allowance amount/schedule changes
 - Parent review queue actions
 - Parent chore editing
 - Earnings/ledger overview
 - Static lock-screen and home-screen widget previews
 - Addable WidgetKit extension with Home Screen and Lock Screen allowance widgets backed by shared App Group state
-- Parent allowance schedule controls for weekly or every-two-week cadence
+- Parent allowance controls for the next period's amount and weekly or every-two-week cadence
 - Parent evidence privacy controls for family photo evidence, default verification mode, people blocking, retention mode, and cleanup windows
 - Per-chore proof settings for photo required, photo optional, parent review, or no proof
 - Child no-photo submission flow for chores that allow it

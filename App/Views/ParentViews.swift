@@ -869,6 +869,16 @@ private enum AppleSignInError: LocalizedError {
 
 struct AllowanceSettingsCard: View {
     @EnvironmentObject private var store: AppStore
+    @State private var allowanceAmount = ""
+    @FocusState private var isAllowanceAmountFocused: Bool
+
+    private var parsedAllowanceCents: Int? {
+        Money.cents(fromDollarString: allowanceAmount)
+    }
+
+    private var allowanceAmountHasChanges: Bool {
+        parsedAllowanceCents != store.allowanceSettings.baseAllowanceCents
+    }
 
     private var cadenceBinding: Binding<AllowanceCadence> {
         Binding {
@@ -913,6 +923,43 @@ struct AllowanceSettingsCard: View {
                 .font(.title3.weight(.heavy))
 
             VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Label("Allowance amount", systemImage: "dollarsign.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.inkBlack)
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Text("$")
+                            .foregroundStyle(Color.mutedGray)
+
+                        TextField("0.00", text: $allowanceAmount)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .focused($isAllowanceAmountFocused)
+                            .frame(width: 82)
+
+                        Button {
+                            saveAllowanceAmount()
+                        } label: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title3)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(parsedAllowanceCents == nil || !allowanceAmountHasChanges)
+                        .accessibilityLabel("Save allowance amount")
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 42)
+                    .background(Color.softGray.opacity(0.65), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
+                Text("Amount changes begin with the next allowance period. This period stays unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(Color.mutedGray)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 Picker("Cadence", selection: cadenceBinding) {
                     ForEach(AllowanceCadence.allCases) { cadence in
                         Text(cadence.title).tag(cadence)
@@ -964,6 +1011,39 @@ struct AllowanceSettingsCard: View {
                     .stroke(Color.softGray, lineWidth: 1)
             )
         }
+        .onAppear {
+            refreshAllowanceAmount()
+        }
+        .onChange(of: store.allowanceSettings.baseAllowanceCents) { _, _ in
+            guard !isAllowanceAmountFocused else { return }
+            refreshAllowanceAmount()
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    isAllowanceAmountFocused = false
+                }
+            }
+        }
+    }
+
+    private func saveAllowanceAmount() {
+        guard let cents = parsedAllowanceCents else { return }
+
+        store.updateAllowanceSettings(
+            cadence: store.allowanceSettings.cadence,
+            allowanceWeekday: store.allowanceSettings.allowanceWeekday,
+            nextAllowanceDate: store.allowanceSettings.nextAllowanceDate,
+            baseAllowanceCents: cents
+        )
+        isAllowanceAmountFocused = false
+        allowanceAmount = Money.dollars(cents).replacingOccurrences(of: "$", with: "")
+    }
+
+    private func refreshAllowanceAmount() {
+        allowanceAmount = Money.dollars(store.allowanceSettings.baseAllowanceCents)
+            .replacingOccurrences(of: "$", with: "")
     }
 }
 

@@ -806,11 +806,12 @@ final class AppStore: ObservableObject {
     func updateAllowanceSettings(
         cadence: AllowanceCadence,
         allowanceWeekday: AllowanceWeekday,
-        nextAllowanceDate: Date
+        nextAllowanceDate: Date,
+        baseAllowanceCents: Int? = nil
     ) {
         let updatedSettings = AllowanceSettings(
             familyId: familyId,
-            baseAllowanceCents: allowanceSettings.baseAllowanceCents,
+            baseAllowanceCents: max(0, baseAllowanceCents ?? allowanceSettings.baseAllowanceCents),
             cadence: cadence,
             allowanceWeekday: allowanceWeekday,
             nextAllowanceDate: Calendar.current.startOfDay(for: nextAllowanceDate)
@@ -1992,6 +1993,7 @@ final class AppStore: ObservableObject {
                 familyId: settings.familyId,
                 settings: settings
             )
+            familySyncState = .synced("Allowance settings saved across devices.")
         } catch {
             familySyncState = .failed("Allowance schedule saved on this phone, but did not sync: \(error.localizedDescription)")
         }
