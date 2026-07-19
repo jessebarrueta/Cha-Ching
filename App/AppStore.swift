@@ -106,6 +106,10 @@ final class AppStore: ObservableObject {
         childInvites.sorted { $0.createdAt > $1.createdAt }.first
     }
 
+    var activeChores: [ChoreDefinition] {
+        chores.filter { $0.archivedAt == nil }
+    }
+
     var allowanceSummary: AllowanceSummary {
         AllowanceEngine.summary(for: ledger)
     }
@@ -910,7 +914,7 @@ final class AppStore: ObservableObject {
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: localNotificationIdentifiers())
 
-        for chore in chores where !chore.isPaused {
+        for chore in chores where !chore.isPaused && chore.archivedAt == nil {
             guard let dueDate = Self.dateToday(for: chore.dueTime) else {
                 continue
             }
@@ -1258,6 +1262,43 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func setChorePaused(_ chore: ChoreDefinition, isPaused: Bool) {
+        guard let index = chores.firstIndex(where: { $0.id == chore.id }),
+              chores[index].archivedAt == nil else {
+            return
+        }
+
+        chores[index].isPaused = isPaused
+        chores[index].updatedAt = Date()
+        if isPaused {
+            excuseOpenOccurrences(for: chore.id, reason: "Paused by parent.")
+        }
+        publishWidgetSnapshot()
+
+        Task {
+            await syncChoreLifecycle(id: chore.id, isPaused: isPaused, archive: false)
+            await refreshNotificationScheduleIfAuthorized()
+        }
+    }
+
+    func archiveChore(_ chore: ChoreDefinition) {
+        guard let index = chores.firstIndex(where: { $0.id == chore.id }),
+              chores[index].archivedAt == nil else {
+            return
+        }
+
+        chores[index].isPaused = true
+        chores[index].archivedAt = Date()
+        chores[index].updatedAt = Date()
+        excuseOpenOccurrences(for: chore.id, reason: "Archived by parent.")
+        publishWidgetSnapshot()
+
+        Task {
+            await syncChoreLifecycle(id: chore.id, isPaused: true, archive: true)
+            await refreshNotificationScheduleIfAuthorized()
+        }
+    }
+
     private func applyLocalPreviewState() {
         let snapshot = SeedData.snapshot()
         familyId = snapshot.familyId
@@ -1445,6 +1486,7 @@ final class AppStore: ObservableObject {
             dueWindowMinutes: record.dueWindowMinutes,
             reminderOffsetsMinutes: record.reminderOffsetsMinutes,
             isPaused: record.isPaused,
+            archivedAt: record.archivedAt,
             createdAt: record.createdAt,
             updatedAt: record.updatedAt
         )
@@ -1554,6 +1596,16 @@ final class AppStore: ObservableObject {
             return
         }
         mutation(&occurrences[index])
+    }
+
+    private func excuseOpenOccurrences(for choreId: UUID, reason: String) {
+        let now = Date()
+        for index in occurrences.indices where
+            occurrences[index].choreDefinitionId == choreId && occurrences[index].status.isOpen {
+            occurrences[index].status = .excused
+            occurrences[index].excuseReason = reason
+            occurrences[index].updatedAt = now
+        }
     }
 
     private func updateInvite(_ id: UUID, mutation: (inout ChildInvite) -> Void) {
@@ -2018,6 +2070,27 @@ final class AppStore: ObservableObject {
             familySyncState = .synced("Chore saved across devices.")
         } catch {
             familySyncState = .failed("Chore saved on this phone, but did not sync: \(error.localizedDescription)")
+        }
+    }
+
+    private func syncChoreLifecycle(id: UUID, isPaused: Bool, archive: Bool) async {
+        guard SupabaseClientProvider.shared.auth.currentSession != nil else {
+            return
+        }
+
+        do {
+            _ = try await remoteStore.currentSession()
+            _ = try await remoteStore.setChoreLifecycle(
+                id: id,
+                isPaused: isPaused,
+                archive: archive
+            )
+            await loadRemoteFamilyStateIfSignedIn(force: true)
+            familySyncState = .synced(
+                archive ? "Chore archived across devices." : (isPaused ? "Chore paused across devices." : "Chore resumed across devices.")
+            )
+        } catch {
+            familySyncState = .failed("Chore status changed on this phone, but did not sync: \(error.localizedDescription)")
         }
     }
 

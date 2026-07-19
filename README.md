@@ -157,6 +157,7 @@ supabase/migrations/0007_evidence_policy_settings.sql
 supabase/migrations/0008_task_nudges.sql
 supabase/migrations/0009_chore_recurrence.sql
 supabase/migrations/0010_task_deadlines.sql
+supabase/migrations/0011_chore_lifecycle.sql
 ```
 
 `0004_family_bootstrap.sql` adds the `bootstrap_preview_family` RPC used by the parent Family Sync card. A signed-in parent can create the initial remote family, child profile, current week, starting allowance ledger entry, and preview chore schedule from the app.
@@ -172,6 +173,8 @@ supabase/migrations/0010_task_deadlines.sql
 `0009_chore_recurrence.sql` adds the idempotent `ensure_current_task_occurrences` RPC. It creates matching daily, weekly, or one-time chores for the family’s local day, opens the next allowance period when needed, and carries excess deductions into the next starting balance.
 
 `0010_task_deadlines.sql` adds the transactional `process_task_occurrence_deadlines` RPC. It advances upcoming chores to due, closes expired chores as missed, and creates each automatic deduction exactly once. Expired preview chores from before the feature was enabled are grandfathered as excused.
+
+`0011_chore_lifecycle.sql` adds archived chore state and the parent-only `set_chore_lifecycle` RPC. Pausing or archiving a chore excuses its open occurrences, stops future scheduling, and preserves completed task and allowance history.
 
 Evidence files should be stored under paths beginning with the family id:
 
@@ -240,11 +243,13 @@ psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supa
   -f supabase/migrations/0009_chore_recurrence.sql
 psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
   -f supabase/migrations/0010_task_deadlines.sql
+psql "postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.pjvgtmxyxrfhabyuefne.supabase.co:5432/postgres" \
+  -f supabase/migrations/0011_chore_lifecycle.sql
 ```
 
 ## Next Slices
 
-1. Upload build 10 and smoke-test daily, weekly, one-time, and automatically missed chores across parent and child TestFlight devices.
+1. Upload build 11 and smoke-test pause, resume, archive, dark mode, and automatically missed chores across parent and child TestFlight devices.
 2. Smoke-test auth-backed evidence upload and AI review on a physical phone against the remote family.
 3. Add on-device person/face blocking before evidence upload.
 4. Add APNs-backed instant sync and parent-to-child nudges.

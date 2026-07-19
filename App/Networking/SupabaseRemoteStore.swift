@@ -225,6 +225,30 @@ struct SupabaseRemoteStore: Sendable {
         return response
     }
 
+    func setChoreLifecycle(
+        id: UUID,
+        isPaused: Bool,
+        archive: Bool
+    ) async throws -> ChoreLifecycleResponse {
+        let responses: [ChoreLifecycleResponse] = try await client
+            .rpc(
+                "set_chore_lifecycle",
+                params: ChoreLifecycleParams(
+                    choreId: id,
+                    isPaused: isPaused,
+                    archive: archive
+                )
+            )
+            .execute()
+            .value
+
+        guard let response = responses.first else {
+            throw SupabaseRemoteStoreError.emptyChoreLifecycleResponse
+        }
+
+        return response
+    }
+
     func upsertChildProfile(
         id: UUID,
         familyId: UUID,
@@ -684,6 +708,7 @@ enum SupabaseRemoteStoreError: LocalizedError {
     case emptyBootstrapResponse
     case emptyTaskOccurrenceResponse
     case emptyTaskDeadlinesResponse
+    case emptyChoreLifecycleResponse
     case emptyParentReviewDecisionResponse
     case emptyNoPhotoSubmissionResponse
 
@@ -695,6 +720,8 @@ enum SupabaseRemoteStoreError: LocalizedError {
             return "Supabase did not return a task schedule after refreshing."
         case .emptyTaskDeadlinesResponse:
             return "Supabase did not return task deadline updates after refreshing."
+        case .emptyChoreLifecycleResponse:
+            return "Supabase did not return the updated chore status."
         case .emptyParentReviewDecisionResponse:
             return "Supabase did not return the reviewed task."
         case .emptyNoPhotoSubmissionResponse:
@@ -1008,5 +1035,17 @@ private struct ParentReviewDecisionParams: Encodable {
         case targetOccurrenceId = "target_occurrence_id"
         case targetDecision = "target_decision"
         case targetNote = "target_note"
+    }
+}
+
+private struct ChoreLifecycleParams: Encodable {
+    let choreId: UUID
+    let isPaused: Bool
+    let archive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case choreId = "target_chore_id"
+        case isPaused = "target_is_paused"
+        case archive = "target_archive"
     }
 }

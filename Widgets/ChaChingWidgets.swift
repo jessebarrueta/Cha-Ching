@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WidgetKit
 
 struct ChaChingAllowanceEntry: TimelineEntry {
@@ -216,11 +217,11 @@ struct LimeFace: View {
 
             VStack(spacing: 5) {
                 HStack(spacing: 12) {
-                    Circle().fill(Color.ccInk).frame(width: 4, height: 4)
-                    Circle().fill(Color.ccInk).frame(width: 4, height: 4)
+                    Circle().fill(Color.ccBrandBlack).frame(width: 4, height: 4)
+                    Circle().fill(Color.ccBrandBlack).frame(width: 4, height: 4)
                 }
                 ArcSmile()
-                    .stroke(Color.ccInk, lineWidth: 2)
+                    .stroke(Color.ccBrandBlack, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .frame(width: 18, height: 8)
             }
             .offset(y: 4)
@@ -231,6 +232,7 @@ struct LimeFace: View {
 struct ArcSmile: Shape {
     func path(in rect: CGRect) -> Path {
         var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
         path.addQuadCurve(
             to: CGPoint(x: rect.maxX, y: rect.minY),
             control: CGPoint(x: rect.midX, y: rect.maxY)
@@ -260,12 +262,21 @@ struct ChaChingWidgetBundle: WidgetBundle {
 }
 
 private extension Color {
-    static let ccInk = Color(hex: "050505")
-    static let ccPaper = Color(hex: "F8F7F2")
-    static let ccMuted = Color(hex: "777770")
-    static let ccSoft = Color(hex: "E9E9E5")
+    static let ccBrandBlack = Color(hex: "050505")
+    static let ccInk = Color(lightHex: "050505", darkHex: "F5F5F2")
+    static let ccPaper = Color(lightHex: "F8F7F2", darkHex: "171815")
+    static let ccMuted = Color(lightHex: "777770", darkHex: "B6B6AE")
+    static let ccSoft = Color(lightHex: "E9E9E5", darkHex: "383934")
     static let ccSun = Color(hex: "FFCC00")
     static let ccLime = Color(hex: "A8E600")
+
+    init(lightHex: String, darkHex: String) {
+        let light = UIColor(hex: lightHex)
+        let dark = UIColor(hex: darkHex)
+        self.init(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
 
     init(hex: String) {
         let scanner = Scanner(string: hex)
@@ -277,5 +288,20 @@ private extension Color {
         let blue = Double(value & 0xFF) / 255
 
         self.init(red: red, green: green, blue: blue)
+    }
+}
+
+private extension UIColor {
+    convenience init(hex: String) {
+        let scanner = Scanner(string: hex)
+        var value: UInt64 = 0
+        scanner.scanHexInt64(&value)
+
+        self.init(
+            red: CGFloat((value >> 16) & 0xFF) / 255,
+            green: CGFloat((value >> 8) & 0xFF) / 255,
+            blue: CGFloat(value & 0xFF) / 255,
+            alpha: 1
+        )
     }
 }

@@ -188,6 +188,7 @@ struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
     let dueWindowMinutes: Int
     let reminderOffsetsMinutes: [Int]
     let isPaused: Bool
+    let archivedAt: Date?
     let createdAt: Date
     let updatedAt: Date
 
@@ -209,6 +210,7 @@ struct ChoreDefinitionRecord: Codable, Identifiable, Sendable {
         case dueWindowMinutes = "due_window_minutes"
         case reminderOffsetsMinutes = "reminder_offsets_minutes"
         case isPaused = "is_paused"
+        case archivedAt = "archived_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -422,6 +424,20 @@ struct ProcessTaskDeadlinesResponse: Decodable, Sendable {
         case markedDueCount = "marked_due_count"
         case markedMissedCount = "marked_missed_count"
         case deductionCount = "deduction_count"
+    }
+}
+
+struct ChoreLifecycleResponse: Decodable, Sendable {
+    let choreId: UUID
+    let isPaused: Bool
+    let archivedAt: Date?
+    let excusedOccurrenceCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case choreId = "chore_id"
+        case isPaused = "is_paused"
+        case archivedAt = "archived_at"
+        case excusedOccurrenceCount = "excused_occurrence_count"
     }
 }
 

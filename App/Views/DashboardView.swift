@@ -101,7 +101,7 @@ struct DashboardView: View {
                     .frame(width: 58, height: 58)
                 Image(systemName: "sparkle")
                     .font(.title2.weight(.black))
-                    .foregroundStyle(Color.inkBlack)
+                    .foregroundStyle(Color.brandBlack)
             }
             .accessibilityHidden(true)
         }
@@ -150,7 +150,7 @@ struct StatChip: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
@@ -194,7 +194,7 @@ struct TaskRow: View {
             }
         }
         .padding(14)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(borderColor, lineWidth: 1.5)

@@ -31,7 +31,7 @@ struct LockScreenWidgetCard: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Friday, May 24")
                 .font(.subheadline)
-                .foregroundStyle(Color.paperWhite.opacity(0.68))
+                .foregroundStyle(Color.brandWhite.opacity(0.68))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(Money.dollars(store.allowanceSummary.currentTotalCents))
@@ -39,11 +39,11 @@ struct LockScreenWidgetCard: View {
                 Text("of \(Money.dollars(store.allowanceSummary.weeklyBaseCents))")
                     .font(.headline)
             }
-            .foregroundStyle(Color.paperWhite)
+            .foregroundStyle(Color.brandWhite)
 
             Text(store.remainingCount <= 2 ? "You're almost there!" : "Keep your full allowance.")
                 .font(.subheadline)
-                .foregroundStyle(Color.paperWhite.opacity(0.8))
+                .foregroundStyle(Color.brandWhite.opacity(0.8))
 
             CapsuleProgress(value: store.allowanceSummary.progress)
 
@@ -53,7 +53,7 @@ struct LockScreenWidgetCard: View {
                     .font(.headline)
                 Spacer()
             }
-            .foregroundStyle(Color.paperWhite)
+            .foregroundStyle(Color.brandWhite)
 
             MascotCluster(scale: 0.52)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -62,7 +62,7 @@ struct LockScreenWidgetCard: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, minHeight: 292, alignment: .topLeading)
-        .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(Color.brandBlack, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }
@@ -120,7 +120,7 @@ struct HomeScreenWidgetCard: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, minHeight: 276, alignment: .topLeading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)

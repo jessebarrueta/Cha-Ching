@@ -172,10 +172,20 @@ struct ReviewCard: View {
                     SecondaryActionButton(title: "Reject", systemImage: "xmark.circle.fill", tint: .warmOrange) {
                         store.reject(occurrence)
                     }
-                    SecondaryActionButton(title: "Excuse", systemImage: "hand.raised.fill", tint: .electricBlue.opacity(0.35)) {
+                    SecondaryActionButton(
+                        title: "Excuse",
+                        systemImage: "hand.raised.fill",
+                        tint: .electricBlue.opacity(0.62),
+                        foregroundColor: .brandWhite
+                    ) {
                         store.excuse(occurrence, reason: "Parent excused")
                     }
-                    SecondaryActionButton(title: "Retake", systemImage: "camera.rotate.fill", tint: .softGray) {
+                    SecondaryActionButton(
+                        title: "Retake",
+                        systemImage: "camera.rotate.fill",
+                        tint: .softGray,
+                        foregroundColor: .inkBlack
+                    ) {
                         store.requestRetake(occurrence)
                     }
                 }
@@ -198,7 +208,7 @@ struct ReviewCard: View {
             }
         }
         .padding(14)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(occurrence.status.needsParentReview ? Color.sunYellow : Color.softGray, lineWidth: 1.5)
@@ -264,7 +274,7 @@ struct ReviewThumbnail: View {
 
             Image(systemName: iconName)
                 .font(.title.weight(.bold))
-                .foregroundStyle(Color.paperWhite)
+                .foregroundStyle(Color.brandWhite)
         }
         .accessibilityHidden(true)
     }
@@ -309,7 +319,7 @@ struct ChoreManagementView: View {
                     } label: {
                         Label("Add", systemImage: "plus.circle.fill")
                             .font(.headline)
-                            .foregroundStyle(Color.inkBlack)
+                            .foregroundStyle(Color.brandBlack)
                             .padding(.horizontal, 14)
                             .frame(height: 40)
                             .background(Color.sunYellow.opacity(0.72), in: Capsule())
@@ -317,11 +327,11 @@ struct ChoreManagementView: View {
                     .buttonStyle(.plain)
                 }
 
-                if store.chores.isEmpty {
+                if store.activeChores.isEmpty {
                     ContentUnavailableView("No chores yet", systemImage: "checklist")
                         .frame(minHeight: 240)
                 } else {
-                    ForEach(store.chores) { chore in
+                    ForEach(store.activeChores) { chore in
                         Button {
                             selectedChore = chore
                         } label: {
@@ -334,7 +344,9 @@ struct ChoreManagementView: View {
                                     Text(chore.title)
                                         .font(.headline)
                                         .foregroundStyle(Color.inkBlack)
-                                    Text("\(chore.recurrence.summary) · \(chore.dueTime) · Miss it \(Money.dollars(-chore.deductionCents, signed: true))")
+                                    Text(chore.isPaused
+                                         ? "Paused · \(chore.recurrence.summary) · \(chore.dueTime)"
+                                         : "\(chore.recurrence.summary) · \(chore.dueTime) · Miss it \(Money.dollars(-chore.deductionCents, signed: true))")
                                         .font(.caption)
                                         .foregroundStyle(Color.mutedGray)
                                 }
@@ -346,7 +358,7 @@ struct ChoreManagementView: View {
                                     .foregroundStyle(Color.mutedGray)
                             }
                             .padding(16)
-                            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                                     .stroke(Color.softGray, lineWidth: 1)
@@ -433,7 +445,7 @@ struct FamilyManagementView: View {
                         .disabled(store.inviteCreationState.isWorking)
                     }
                     .padding(16)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(Color.softGray, lineWidth: 1)
@@ -484,7 +496,7 @@ struct FamilyManagementView: View {
                         .disabled(store.inviteCreationState.isWorking)
                     }
                     .padding(16)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .stroke(Color.softGray, lineWidth: 1)
@@ -543,7 +555,7 @@ struct FamilySyncCard: View {
                         .font(.caption2.weight(.heavy))
                         .padding(.horizontal, 9)
                         .padding(.vertical, 5)
-                        .foregroundStyle(Color.inkBlack)
+                        .foregroundStyle(Color.brandBlack)
                         .background(Color.acidLime.opacity(0.65), in: Capsule())
                 }
             }
@@ -617,7 +629,7 @@ struct FamilySyncCard: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 48)
-                                .foregroundStyle(Color.inkBlack)
+                                .foregroundStyle(Color.brandBlack)
                                 .background(Color.sunYellow.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -631,8 +643,8 @@ struct FamilySyncCard: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 48)
-                                .foregroundStyle(Color.paperWhite)
-                                .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .foregroundStyle(Color.brandWhite)
+                                .background(Color.brandBlack, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .disabled(!store.familySyncState.hasPendingCode)
@@ -695,7 +707,7 @@ struct FamilySyncCard: View {
             .disabled(store.familySyncState.isWorking)
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(store.familySyncState.isSynced ? Color.acidLime : Color.softGray, lineWidth: 1.5)
@@ -946,7 +958,7 @@ struct AllowanceSettingsCard: View {
                 }
             }
             .padding(16)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.softGray, lineWidth: 1)
@@ -1047,7 +1059,7 @@ struct EvidencePrivacySettingsCard: View {
                 .disabled(!store.evidencePolicy.photoEvidenceEnabled)
             }
             .padding(16)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.softGray, lineWidth: 1)
@@ -1097,7 +1109,7 @@ struct ParentMemberCard: View {
             Spacer()
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
@@ -1132,7 +1144,7 @@ struct ChildProfileCard: View {
             Spacer()
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
@@ -1191,7 +1203,7 @@ struct ParentInviteCard: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
-                            .foregroundStyle(Color.inkBlack)
+                            .foregroundStyle(Color.brandBlack)
                             .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
 
@@ -1215,7 +1227,7 @@ struct ParentInviteCard: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 42)
-                        .foregroundStyle(Color.inkBlack)
+                        .foregroundStyle(Color.brandBlack)
                         .background(Color.sunYellow.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -1223,7 +1235,7 @@ struct ParentInviteCard: View {
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(status == .pending ? Color.sunYellow : Color.softGray, lineWidth: 1.5)
@@ -1295,7 +1307,7 @@ struct ChildInviteCard: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .frame(height: 48)
-                            .foregroundStyle(Color.inkBlack)
+                            .foregroundStyle(Color.brandBlack)
                             .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
 
@@ -1319,7 +1331,7 @@ struct ChildInviteCard: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 42)
-                        .foregroundStyle(Color.inkBlack)
+                        .foregroundStyle(Color.brandBlack)
                         .background(Color.sunYellow.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -1327,7 +1339,7 @@ struct ChildInviteCard: View {
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(status == .pending ? Color.sunYellow : Color.softGray, lineWidth: 1.5)
@@ -1364,6 +1376,7 @@ struct EditChoreSheet: View {
     @State private var oneTimeDate: Date
     @State private var verificationMode: VerificationMode
     @State private var blockPeopleInPhotos: Bool
+    @State private var isShowingArchiveConfirmation = false
 
     init(chore: ChoreDefinition?) {
         self.chore = chore
@@ -1419,6 +1432,30 @@ struct EditChoreSheet: View {
                         .lineLimit(3...6)
                     TextField("Photo guidance", text: $expectedEvidence, axis: .vertical)
                         .lineLimit(2...4)
+                }
+
+                if let chore {
+                    Section {
+                        Button {
+                            store.setChorePaused(chore, isPaused: !chore.isPaused)
+                            dismiss()
+                        } label: {
+                            Label(
+                                chore.isPaused ? "Resume Chore" : "Pause Chore",
+                                systemImage: chore.isPaused ? "play.fill" : "pause.fill"
+                            )
+                        }
+
+                        Button(role: .destructive) {
+                            isShowingArchiveConfirmation = true
+                        } label: {
+                            Label("Archive Chore", systemImage: "archivebox.fill")
+                        }
+                    } header: {
+                        Text("Status")
+                    } footer: {
+                        Text("Pausing excuses any open instance. Archiving removes the chore from future schedules while keeping its history.")
+                    }
                 }
 
                 if repeatFrequency == .weekly && weekdays.isEmpty {
@@ -1477,6 +1514,20 @@ struct EditChoreSheet: View {
                     .disabled(saveDisabled)
                 }
             }
+            .confirmationDialog(
+                "Archive \(chore?.title ?? "this chore")?",
+                isPresented: $isShowingArchiveConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Archive Chore", role: .destructive) {
+                    guard let chore else { return }
+                    store.archiveChore(chore)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Its completed history stays in allowance records, but it will no longer be scheduled.")
+            }
         }
     }
 
@@ -1515,7 +1566,7 @@ struct EditChoreSheet: View {
                 } label: {
                     Text(String(weekday.title.prefix(1)))
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.inkBlack)
+                        .foregroundStyle(weekdays.contains(weekday) ? Color.brandBlack : Color.inkBlack)
                         .frame(maxWidth: .infinity)
                         .frame(height: 36)
                         .background(

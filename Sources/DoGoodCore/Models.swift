@@ -605,6 +605,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
     public var dueWindowMinutes: Int
     public var reminderOffsetsMinutes: [Int]
     public var isPaused: Bool
+    public var archivedAt: Date?
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -627,6 +628,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
         dueWindowMinutes: Int = 90,
         reminderOffsetsMinutes: [Int] = [15, 0],
         isPaused: Bool = false,
+        archivedAt: Date? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -648,6 +650,7 @@ public struct ChoreDefinition: Identifiable, Codable, Equatable, Sendable {
         self.dueWindowMinutes = dueWindowMinutes
         self.reminderOffsetsMinutes = reminderOffsetsMinutes
         self.isPaused = isPaused
+        self.archivedAt = archivedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

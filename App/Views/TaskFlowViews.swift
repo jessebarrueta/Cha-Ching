@@ -50,8 +50,8 @@ struct TaskDetailView: View {
                                     .font(.headline)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 52)
-                                    .foregroundStyle(Color.paperWhite)
-                                    .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .foregroundStyle(Color.brandWhite)
+                                    .background(Color.brandBlack, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -69,7 +69,7 @@ struct TaskDetailView: View {
                                 .font(.headline)
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 52)
-                                .foregroundStyle(Color.inkBlack)
+                                .foregroundStyle(Color.brandBlack)
                                 .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                             .buttonStyle(.plain)
@@ -125,11 +125,11 @@ struct TaskDetailView: View {
                 Text(chore.title)
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(Color.inkBlack)
+                    .foregroundStyle(Color.brandBlack)
 
                 Text("Every day · Due by \(chore.dueTime)")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.inkBlack.opacity(0.76))
+                    .foregroundStyle(Color.brandBlack.opacity(0.76))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 28)
@@ -145,7 +145,7 @@ struct TaskDetailView: View {
     private var dogIllustration: some View {
         ZStack {
             Circle()
-                .fill(Color.paperWhite)
+                .fill(Color.brandWhite)
                 .frame(width: 96, height: 86)
 
             RoundedRectangle(cornerRadius: 32, style: .continuous)
@@ -162,14 +162,14 @@ struct TaskDetailView: View {
 
             VStack(spacing: 7) {
                 HStack(spacing: 26) {
-                    Circle().fill(Color.inkBlack).frame(width: 7, height: 7)
-                    Circle().fill(Color.inkBlack).frame(width: 7, height: 7)
+                    Circle().fill(Color.brandBlack).frame(width: 7, height: 7)
+                    Circle().fill(Color.brandBlack).frame(width: 7, height: 7)
                 }
                 Capsule()
-                    .fill(Color.inkBlack)
+                    .fill(Color.brandBlack)
                     .frame(width: 14, height: 10)
                 ArcSmile()
-                    .stroke(Color.inkBlack, lineWidth: 2)
+                    .stroke(Color.brandBlack, lineWidth: 2)
                     .frame(width: 28, height: 12)
             }
             .offset(y: 8)
@@ -189,7 +189,7 @@ struct TaskDetailView: View {
             Spacer()
         }
         .padding(18)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
@@ -223,7 +223,7 @@ struct CameraCaptureView: View {
 
     private var cameraSurface: some View {
         ZStack {
-            Color.inkBlack.ignoresSafeArea()
+            Color.brandBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 photoSurface
@@ -233,7 +233,7 @@ struct CameraCaptureView: View {
                             ZStack {
                                 Color.black.opacity(0.28)
                                 ProgressView()
-                                    .tint(Color.paperWhite)
+                                    .tint(Color.brandWhite)
                                     .scaleEffect(1.4)
                             }
                         }
@@ -247,11 +247,11 @@ struct CameraCaptureView: View {
                             captureTapped()
                         } label: {
                             Circle()
-                                .stroke(Color.paperWhite, lineWidth: 4)
+                                .stroke(Color.brandWhite, lineWidth: 4)
                                 .frame(width: 78, height: 78)
                                 .overlay {
                                     Circle()
-                                        .fill(Color.paperWhite)
+                                        .fill(Color.brandWhite)
                                         .frame(width: 62, height: 62)
                                 }
                         }
@@ -266,14 +266,14 @@ struct CameraCaptureView: View {
                             .foregroundStyle(Color.sunYellow)
                         Text("Show the full task area clearly.")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.inkBlack)
+                            .foregroundStyle(Color.brandBlack)
                         Spacer()
                         LimeMascot()
                             .frame(width: 56, height: 60)
                             .clipped()
                     }
                     .padding(16)
-                    .background(Color.paperWhite, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(Color.brandWhite, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .padding(22)
             }
@@ -281,7 +281,7 @@ struct CameraCaptureView: View {
         .navigationTitle("Take a Photo")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(Color.inkBlack, for: .navigationBar)
+        .toolbarBackground(Color.brandBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .fullScreenCover(isPresented: $isShowingCamera) {
             CameraImagePicker { image in
@@ -308,7 +308,7 @@ struct CameraCaptureView: View {
             VStack(spacing: 16) {
                 ZStack {
                     Ellipse()
-                        .fill(Color.paperWhite)
+                        .fill(Color.brandWhite)
                         .frame(width: 190, height: 74)
                     Ellipse()
                         .fill(Color(red: 0.22, green: 0.13, blue: 0.07))
@@ -327,7 +327,7 @@ struct CameraCaptureView: View {
                     ForEach(0..<3, id: \.self) { _ in
                         Image(systemName: "pawprint.fill")
                             .font(.title)
-                            .foregroundStyle(Color.inkBlack.opacity(0.75))
+                            .foregroundStyle(Color.brandBlack.opacity(0.75))
                     }
                 }
             }
@@ -536,8 +536,8 @@ struct AIReviewResultView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
-                    .foregroundStyle(Color.paperWhite)
-                    .background(Color.inkBlack, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .foregroundStyle(Color.brandWhite)
+                    .background(Color.brandBlack, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
         }
@@ -560,7 +560,7 @@ struct CircleButton: View {
                 .overlay {
                     Image(systemName: systemImage)
                         .font(.headline)
-                        .foregroundStyle(Color.paperWhite)
+                        .foregroundStyle(Color.brandWhite)
                 }
         }
         .buttonStyle(.plain)

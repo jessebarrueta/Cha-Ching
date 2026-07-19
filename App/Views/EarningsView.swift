@@ -32,7 +32,7 @@ struct EarningsView: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
-                            .foregroundStyle(Color.inkBlack)
+                            .foregroundStyle(Color.brandBlack)
                             .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
@@ -66,7 +66,7 @@ struct EarningsView: View {
                 EarningsRow(title: "Rollover next period", value: Money.dollars(-store.allowanceSummary.rolloverDebtCents, signed: true), color: .warmOrange)
             }
         }
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
@@ -96,7 +96,7 @@ struct EarningsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.softGray, lineWidth: 1)
@@ -119,7 +119,7 @@ struct EarningsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.softGray, lineWidth: 1)
@@ -168,7 +168,7 @@ struct AllowanceRequestCard: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
-                        .foregroundStyle(Color.inkBlack)
+                        .foregroundStyle(Color.brandBlack)
                         .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -178,13 +178,13 @@ struct AllowanceRequestCard: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
-                        .foregroundStyle(Color.inkBlack)
+                        .foregroundStyle(Color.brandBlack)
                         .background(Color.acidLime, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
             }
         }
         .padding(18)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.softGray, lineWidth: 1)
